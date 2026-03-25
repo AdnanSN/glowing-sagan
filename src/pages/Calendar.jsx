@@ -70,7 +70,7 @@ export function Calendar() {
         {loading ? (
           <div className="loading-container"><div className="loading-spinner" /><span>Loading…</span></div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 'var(--space-6)' }}>
+          <div className="dashboard-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 'var(--space-6)' }}>
             <div className="calendar-grid">
               {DAY_HEADERS.map(d => (
                 <div key={d} className="calendar-day-header">{d}</div>
