@@ -37,6 +37,7 @@ create table if not exists tasks (
   status text not null default 'To Do', -- To Do, In Progress, In Review, Done
   priority text not null default 'Medium', -- Low, Medium, High
   assignee_id uuid references employees(id) on delete set null,
+  start_date date,                        -- for Gantt chart
   due_date date,
   stage text,
   created_at timestamptz default now(),

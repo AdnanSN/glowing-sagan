@@ -7,6 +7,7 @@ import { Tasks } from './pages/Tasks'
 import { Team } from './pages/Team'
 import { Calendar } from './pages/Calendar'
 import { Documents } from './pages/Documents'
+import { Gantt } from './pages/Gantt'
 import { supabaseConfigured } from './lib/supabase'
 import './index.css'
 
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/team" element={<Team />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/gantt" element={<Gantt />} />
         </Routes>
       </Layout>
     </BrowserRouter>

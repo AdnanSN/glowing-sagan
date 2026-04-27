@@ -2,13 +2,14 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FolderKanban, CheckSquare, Users,
-  CalendarDays, FileText, Menu, X
+  CalendarDays, FileText, Menu, X, GanttChart
 } from 'lucide-react'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
+  { to: '/gantt', icon: GanttChart, label: 'Gantt Chart' },
   { to: '/team', icon: Users, label: 'Team' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { to: '/documents', icon: FileText, label: 'Documents' },

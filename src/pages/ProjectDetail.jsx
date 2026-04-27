@@ -12,7 +12,7 @@ import {
   getStatusColor
 } from '../lib/constants'
 
-const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', stage: '' }
+const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '' }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
 const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
 
@@ -76,12 +76,12 @@ export function ProjectDetail() {
 
   // === TASKS ===
   function openNewTask() { setEditingTask(null); setTaskForm(EMPTY_TASK); setTaskModal(true) }
-  function openEditTask(t) { setEditingTask(t); setTaskForm({ ...t, assignee_id: t.assignee_id || '', due_date: t.due_date || '', stage: t.stage || '', description: t.description || '' }); setTaskModal(true) }
+  function openEditTask(t) { setEditingTask(t); setTaskForm({ ...t, assignee_id: t.assignee_id || '', start_date: t.start_date || '', due_date: t.due_date || '', stage: t.stage || '', description: t.description || '' }); setTaskModal(true) }
   function closeTaskModal() { setTaskModal(false); setEditingTask(null) }
 
   async function saveTask() {
     setSaving(true)
-    const payload = { ...taskForm, project_id: id, assignee_id: taskForm.assignee_id || null, due_date: taskForm.due_date || null, stage: taskForm.stage || null, updated_at: new Date().toISOString() }
+    const payload = { ...taskForm, project_id: id, assignee_id: taskForm.assignee_id || null, start_date: taskForm.start_date || null, due_date: taskForm.due_date || null, stage: taskForm.stage || null, updated_at: new Date().toISOString() }
     if (editingTask) {
       await supabase.from('tasks').update(payload).eq('id', editingTask.id)
     } else {
@@ -532,6 +532,12 @@ export function ProjectDetail() {
               <option value="">— Unassigned —</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Start Date</label>
+            <input className="form-input" type="date" value={taskForm.start_date} onChange={e => setTaskForm(f => ({ ...f, start_date: e.target.value }))} />
           </div>
           <div className="form-group">
             <label className="form-label">Due Date</label>
