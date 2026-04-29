@@ -85,9 +85,22 @@ export function AuthProvider({ children }) {
             .single()
 
           if (insertError) {
-            console.error('Failed to create user role from metadata:', insertError)
-            setUserRole('viewer')
-            setUserEmployee(null)
+            // Another path (e.g. onAuthStateChange race) may have already inserted the row.
+            // Re-query before giving up.
+            const { data: existingRole } = await supabase
+              .from('user_roles')
+              .select('*, employees(*)')
+              .eq('auth_user_id', authUser.id)
+              .single()
+            if (existingRole) {
+              console.log('Role row already existed (race condition), using it:', existingRole.role)
+              setUserRole(existingRole.role)
+              setUserEmployee(existingRole.employees || null)
+            } else {
+              console.error('Failed to create user role from metadata:', insertError)
+              setUserRole('viewer')
+              setUserEmployee(null)
+            }
           } else {
             console.log('User role created successfully:', newRole.role)
             setUserRole(newRole.role)
@@ -142,12 +155,10 @@ export function AuthProvider({ children }) {
 
     const needsConfirmation = !data.session
 
-    // If we got a session immediately (email confirm OFF), try to insert
-    // the role right now so the user doesn't have to re-login.
-    if (data.session && data.user) {
-      await createRoleFromMetadata(data.user)
-    }
-
+    // The role row is created by fetchUserProfile when onAuthStateChange fires.
+    // Calling createRoleFromMetadata here as well caused a race condition where
+    // both paths tried to INSERT simultaneously, the second would fail, and the
+    // user ended up with viewer/member access.
     console.log(`Sign-up complete. Role "${role}" stored in metadata for ${data.user?.id}`)
     return { data, error: null, needsConfirmation }
   }
