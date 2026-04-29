@@ -1,16 +1,9 @@
-// Supabase DB schema - run this in your Supabase SQL Editor
+-- ============================================================
+-- MIGRATION: Add Role-Based Authentication
+-- Run this in your Supabase SQL Editor
+-- ============================================================
 
--- EMPLOYEES
-create table if not exists employees (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  role text not null,
-  email text,
-  color text not null default '#C8A96E',
-  created_at timestamptz default now()
-);
-
--- USER_ROLES (links Supabase auth users to employees and assigns app roles)
+-- 1. Create the user_roles table
 create table if not exists user_roles (
   id uuid primary key default gen_random_uuid(),
   auth_user_id uuid not null unique references auth.users(id) on delete cascade,
@@ -20,81 +13,19 @@ create table if not exists user_roles (
   updated_at timestamptz default now()
 );
 
--- PROJECTS
-create table if not exists projects (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  client text not null,
-  project_type text not null default 'Residential',
-  status text not null default 'Active', -- Active, Planning, Paused, Completed, Cancelled
-  current_stage text not null default 'Briefing',
-  color text not null default '#C8A96E',
-  budget numeric,
-  start_date date,
-  end_date date,
-  description text,
-  location text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
--- TASKS
-create table if not exists tasks (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references projects(id) on delete cascade,
-  title text not null,
-  description text,
-  status text not null default 'To Do', -- To Do, In Progress, In Review, Done
-  priority text not null default 'Medium', -- Low, Medium, High
-  assignee_id uuid references employees(id) on delete set null,
-  start_date date,                        -- for Gantt chart
-  due_date date,
-  stage text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-
--- MILESTONES
-create table if not exists milestones (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references projects(id) on delete cascade,
-  title text not null,
-  due_date date,
-  is_completed boolean default false,
-  created_at timestamptz default now()
-);
-
--- DOCUMENTS
-create table if not exists documents (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references projects(id) on delete cascade,
-  name text not null,
-  url text,
-  doc_type text default 'Other', -- Drawing, Contract, Permit, Report, Specification, Other
-  uploaded_by text,
-  notes text,
-  created_at timestamptz default now()
-);
-
--- COMMENTS
-create table if not exists comments (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references projects(id) on delete cascade,
-  author text not null,
-  content text not null,
-  created_at timestamptz default now()
-);
-
--- ENABLE RLS
-alter table employees enable row level security;
-alter table projects enable row level security;
-alter table tasks enable row level security;
-alter table milestones enable row level security;
-alter table documents enable row level security;
-alter table comments enable row level security;
+-- 2. Enable RLS on user_roles
 alter table user_roles enable row level security;
 
--- RLS policies: authenticated users can read/write all data (small team, internal tool)
+-- 3. Drop old "allow all" policies (they allowed anon access)
+drop policy if exists "Allow all on employees" on employees;
+drop policy if exists "Allow all on projects" on projects;
+drop policy if exists "Allow all on tasks" on tasks;
+drop policy if exists "Allow all on milestones" on milestones;
+drop policy if exists "Allow all on documents" on documents;
+drop policy if exists "Allow all on comments" on comments;
+
+-- 4. Create new authenticated-only policies
+
 -- Employees
 create policy "Authenticated users can read employees" on employees for select to authenticated using (true);
 create policy "Authenticated users can insert employees" on employees for insert to authenticated with check (true);
@@ -131,30 +62,41 @@ create policy "Authenticated users can insert comments" on comments for insert t
 create policy "Authenticated users can update comments" on comments for update to authenticated using (true) with check (true);
 create policy "Authenticated users can delete comments" on comments for delete to authenticated using (true);
 
--- User Roles: users can read their own role, admins can manage all
+-- User Roles
 create policy "Users can read own role" on user_roles for select to authenticated
   using (auth.uid() = auth_user_id);
 create policy "Admin can read all roles" on user_roles for select to authenticated
   using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
+    exists (select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin')
   );
 create policy "Admin can insert roles" on user_roles for insert to authenticated
   with check (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
+    exists (select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin')
   );
 create policy "Admin can update roles" on user_roles for update to authenticated
   using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
+    exists (select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin')
   );
 create policy "Admin can delete roles" on user_roles for delete to authenticated
   using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
+    exists (select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin')
   );
+
+-- ============================================================
+-- 5. CREATE YOUR USERS
+-- Go to Supabase Dashboard > Authentication > Users > Add User
+-- Create accounts for each team member with email/password.
+--
+-- After creating users, link them to employees:
+--
+-- Replace the UUIDs below with actual values from:
+--   - auth.users table (for auth_user_id)
+--   - employees table (for employee_id)
+--
+-- Example:
+-- INSERT INTO user_roles (auth_user_id, employee_id, role) VALUES
+--   ('auth-user-uuid-for-aravinth',  'employee-uuid-for-aravinth',  'admin'),
+--   ('auth-user-uuid-for-husain',    'employee-uuid-for-husain',    'manager'),
+--   ('auth-user-uuid-for-nooriya',   'employee-uuid-for-nooriya',   'member'),
+--   ('auth-user-uuid-for-4th-member','employee-uuid-for-4th-member','member');
+-- ============================================================

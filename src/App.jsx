@@ -1,5 +1,8 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './lib/AuthContext'
 import { Layout } from './components/Layout'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Projects } from './pages/Projects'
 import { ProjectDetail } from './pages/ProjectDetail'
@@ -31,22 +34,105 @@ VITE_SUPABASE_ANON_KEY=your_anon_key`}
   )
 }
 
+function AppRoutes() {
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="auth-loading">
+        <div className="auth-loading-spinner" />
+        <span>Loading…</span>
+      </div>
+    )
+  }
+
+  return (
+    <Routes>
+      {/* Public route */}
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+      />
+
+      {/* Protected routes */}
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout><Dashboard /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute>
+            <Layout><Projects /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id"
+        element={
+          <ProtectedRoute>
+            <Layout><ProjectDetail /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute>
+            <Layout><Tasks /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/team"
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'manager']}>
+            <Layout><Team /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/calendar"
+        element={
+          <ProtectedRoute>
+            <Layout><Calendar /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/documents"
+        element={
+          <ProtectedRoute>
+            <Layout><Documents /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gantt"
+        element={
+          <ProtectedRoute>
+            <Layout><Gantt /></Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <SetupBanner />
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/projects/:id" element={<ProjectDetail />} />
-          <Route path="/tasks" element={<Tasks />} />
-          <Route path="/team" element={<Team />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/gantt" element={<Gantt />} />
-        </Routes>
-      </Layout>
+      <AuthProvider>
+        <SetupBanner />
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   )
 }
