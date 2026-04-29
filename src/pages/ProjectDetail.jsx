@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import {
   ArrowLeft, Plus, CheckSquare, Check, Pencil, Trash2,
@@ -19,6 +20,8 @@ const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', not
 export function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('manage_projects')
 
   const [project, setProject] = useState(null)
   const [tasks, setTasks] = useState([])
@@ -222,9 +225,11 @@ export function ProjectDetail() {
             </div>
           </div>
         </div>
-        <div className="page-header-actions">
-          <Link to={`/projects`} state={{ edit: project.id }} className="btn btn-secondary btn-sm"><Pencil size={13} /> Edit Project</Link>
-        </div>
+        {canManage && (
+          <div className="page-header-actions">
+            <Link to={`/projects`} state={{ edit: project.id }} className="btn btn-secondary btn-sm"><Pencil size={13} /> Edit Project</Link>
+          </div>
+        )}
       </div>
 
       <div className="page-body">
@@ -288,8 +293,9 @@ export function ProjectDetail() {
               <div
                 key={stage}
                 className={`stage-pill${i < currentStageIdx ? ' done' : ''}${stage === project.current_stage ? ' active' : ''}`}
-                onClick={() => updateStage(stage)}
-                title={`Set stage to: ${stage}`}
+                onClick={() => canManage && updateStage(stage)}
+                title={canManage ? `Set stage to: ${stage}` : stage}
+                style={{ cursor: canManage ? 'pointer' : 'default' }}
               >
                 {i < currentStageIdx && <Check size={11} />}
                 {stage}
@@ -316,14 +322,14 @@ export function ProjectDetail() {
           <div>
             <div className="section-header">
               <span className="section-title">Tasks</span>
-              <button className="btn btn-primary btn-sm" onClick={openNewTask}><Plus size={13} /> Add Task</button>
+              {canManage && <button className="btn btn-primary btn-sm" onClick={openNewTask}><Plus size={13} /> Add Task</button>}
             </div>
             {tasks.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon"><CheckSquare /></div>
                 <div className="empty-state-title">No tasks yet</div>
                 <div className="empty-state-desc">Add tasks to track your project's deliverables</div>
-                <button className="btn btn-primary" onClick={openNewTask}><Plus size={15} /> Add Task</button>
+                {canManage && <button className="btn btn-primary" onClick={openNewTask}><Plus size={15} /> Add Task</button>}
               </div>
             ) : (
               TASK_STATUSES.map(status => {
@@ -340,8 +346,8 @@ export function ProjectDetail() {
                         return (
                           <div key={task.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', transition: 'var(--transition)' }}>
                             <div
-                              onClick={() => toggleTaskDone(task)}
-                              style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${task.status === 'Done' ? 'var(--success)' : 'var(--border-medium)'}`, background: task.status === 'Done' ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: 'white', transition: 'var(--transition)' }}
+                              onClick={() => canManage && toggleTaskDone(task)}
+                              style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${task.status === 'Done' ? 'var(--success)' : 'var(--border-medium)'}`, background: task.status === 'Done' ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canManage ? 'pointer' : 'default', flexShrink: 0, color: 'white', transition: 'var(--transition)' }}
                             >
                               {task.status === 'Done' && <Check size={11} />}
                             </div>
@@ -361,8 +367,8 @@ export function ProjectDetail() {
                                   {task.assignee.name.charAt(0)}
                                 </div>
                               )}
-                              <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>
-                              <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>
+                              {canManage && <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>}
+                              {canManage && <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
                             </div>
                           </div>
                         )
@@ -380,14 +386,14 @@ export function ProjectDetail() {
           <div>
             <div className="section-header">
               <span className="section-title">Milestones</span>
-              <button className="btn btn-primary btn-sm" onClick={openNewMs}><Plus size={13} /> Add Milestone</button>
+              {canManage && <button className="btn btn-primary btn-sm" onClick={openNewMs}><Plus size={13} /> Add Milestone</button>}
             </div>
             {milestones.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon"><Flag /></div>
                 <div className="empty-state-title">No milestones yet</div>
                 <div className="empty-state-desc">Track key project dates and deliverables</div>
-                <button className="btn btn-primary" onClick={openNewMs}><Plus size={15} /> Add Milestone</button>
+                {canManage && <button className="btn btn-primary" onClick={openNewMs}><Plus size={15} /> Add Milestone</button>}
               </div>
             ) : (
               <div className="milestone-list">
@@ -395,7 +401,7 @@ export function ProjectDetail() {
                   const isOverdue = m.due_date && isPast(new Date(m.due_date)) && !isToday(new Date(m.due_date)) && !m.is_completed
                   return (
                     <div key={m.id} className="milestone-item">
-                      <div className={`milestone-check${m.is_completed ? ' done' : ''}`} onClick={() => toggleMilestone(m)}>
+                      <div className={`milestone-check${m.is_completed ? ' done' : ''}`} onClick={() => canManage && toggleMilestone(m)} style={{ cursor: canManage ? 'pointer' : 'default' }}>
                         {m.is_completed && <Check />}
                       </div>
                       <div className="milestone-info">
@@ -406,10 +412,12 @@ export function ProjectDetail() {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                        <button className="icon-btn" onClick={() => openEditMs(m)}><Pencil size={12} /></button>
-                        <button className="icon-btn" onClick={() => deleteMilestone(m.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>
-                      </div>
+                      {canManage && (
+                        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                          <button className="icon-btn" onClick={() => openEditMs(m)}><Pencil size={12} /></button>
+                          <button className="icon-btn" onClick={() => deleteMilestone(m.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -423,14 +431,14 @@ export function ProjectDetail() {
           <div>
             <div className="section-header">
               <span className="section-title">Documents</span>
-              <button className="btn btn-primary btn-sm" onClick={openNewDoc}><Plus size={13} /> Add Document</button>
+              {canManage && <button className="btn btn-primary btn-sm" onClick={openNewDoc}><Plus size={13} /> Add Document</button>}
             </div>
             {documents.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon"><FileText /></div>
                 <div className="empty-state-title">No documents yet</div>
                 <div className="empty-state-desc">Add links to drawings, contracts, and project files</div>
-                <button className="btn btn-primary" onClick={openNewDoc}><Plus size={15} /> Add Document</button>
+                {canManage && <button className="btn btn-primary" onClick={openNewDoc}><Plus size={15} /> Add Document</button>}
               </div>
             ) : (
               <div className="doc-list">
@@ -448,8 +456,8 @@ export function ProjectDetail() {
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                       {doc.url && <a href={doc.url} target="_blank" rel="noopener noreferrer" className="icon-btn"><ExternalLink size={13} /></a>}
-                      <button className="icon-btn" onClick={() => openEditDoc(doc)}><Pencil size={12} /></button>
-                      <button className="icon-btn" onClick={() => deleteDoc(doc.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>
+                      {canManage && <button className="icon-btn" onClick={() => openEditDoc(doc)}><Pencil size={12} /></button>}
+                      {canManage && <button className="icon-btn" onClick={() => deleteDoc(doc.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
                     </div>
                   </div>
                 ))}
@@ -551,7 +559,7 @@ export function ProjectDetail() {
             {STAGES.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
-        {editingTask && (
+        {editingTask && canManage && (
           <button className="btn btn-danger btn-sm" style={{ marginTop: 'var(--space-2)' }}
             onClick={() => { closeTaskModal(); deleteTask(editingTask.id) }}>Delete Task</button>
         )}

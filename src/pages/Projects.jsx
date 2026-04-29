@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, Pencil, Trash2, FolderKanban } from 'lucide-react'
 import { format } from 'date-fns'
@@ -15,6 +16,8 @@ const EMPTY_FORM = {
 }
 
 export function Projects() {
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('manage_projects')
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -87,9 +90,11 @@ export function Projects() {
           <span className="page-header-title">Projects</span>
           <span className="page-header-sub">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
         </div>
-        <div className="page-header-actions">
-          <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
-        </div>
+        {canManage && (
+          <div className="page-header-actions">
+            <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
+          </div>
+        )}
       </div>
 
       <div className="page-body">
@@ -113,7 +118,7 @@ export function Projects() {
               <div className="empty-state-icon"><FolderKanban /></div>
               <div className="empty-state-title">{search || filterStatus !== 'All' ? 'No results found' : 'No projects yet'}</div>
               <div className="empty-state-desc">Create your first project to get started tracking your work</div>
-              {!search && filterStatus === 'All' && (
+              {!search && filterStatus === 'All' && canManage && (
                 <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
               )}
             </div>
@@ -131,7 +136,7 @@ export function Projects() {
                     <th>Status</th>
                     <th>Budget</th>
                     <th>Deadline</th>
-                    <th></th>
+                    {canManage && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -156,13 +161,15 @@ export function Projects() {
                       <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                         {p.end_date ? format(new Date(p.end_date), 'd MMM yyyy') : '—'}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                          <button className="icon-btn" onClick={e => openEdit(e, p)} title="Edit"><Pencil size={13} /></button>
-                          <button className="icon-btn" onClick={e => handleDelete(e, p.id)} title="Delete"
-                            style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>
-                        </div>
-                      </td>
+                      {canManage && (
+                        <td>
+                          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                            <button className="icon-btn" onClick={e => openEdit(e, p)} title="Edit"><Pencil size={13} /></button>
+                            <button className="icon-btn" onClick={e => handleDelete(e, p.id)} title="Delete"
+                              style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

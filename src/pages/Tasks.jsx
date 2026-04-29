@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, CheckSquare } from 'lucide-react'
 import { format, isPast, isToday } from 'date-fns'
@@ -24,6 +25,8 @@ const EMPTY_FORM = {
 }
 
 export function Tasks() {
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('manage_tasks')
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([])
   const [employees, setEmployees] = useState([])
@@ -120,9 +123,11 @@ export function Tasks() {
           <span className="page-header-title">Tasks</span>
           <span className="page-header-sub">{tasks.filter(t => t.status !== 'Done').length} open tasks</span>
         </div>
-        <div className="page-header-actions">
-          <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>
-        </div>
+        {canManage && (
+          <div className="page-header-actions">
+            <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>
+          </div>
+        )}
       </div>
 
       <div className="page-body">
@@ -152,7 +157,7 @@ export function Tasks() {
               <div className="empty-state-icon"><CheckSquare /></div>
               <div className="empty-state-title">No tasks yet</div>
               <div className="empty-state-desc">Add tasks and assign them to team members</div>
-              <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>
+              {canManage && <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>}
             </div>
           </div>
         ) : (
@@ -169,7 +174,7 @@ export function Tasks() {
                 {colTasks.map(task => {
                   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date)) && task.status !== 'Done'
                   return (
-                    <div key={task.id} className="kanban-task-card" onClick={() => openEdit(task)}>
+                    <div key={task.id} className="kanban-task-card" onClick={() => canManage && openEdit(task)} style={{ cursor: canManage ? 'pointer' : 'default' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
                         <div className="kanban-task-title">{task.title}</div>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: PRIORITY_COLORS[task.priority], flexShrink: 0, marginTop: 4 }} title={task.priority + ' priority'} />
@@ -197,10 +202,12 @@ export function Tasks() {
                     </div>
                   )
                 })}
-                <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-2)' }}
-                  onClick={() => { setForm({ ...EMPTY_FORM, status }); setEditing(null); setShowModal(true) }}>
-                  <Plus size={13} /> Add
-                </button>
+                {canManage && (
+                  <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--space-2)' }}
+                    onClick={() => { setForm({ ...EMPTY_FORM, status }); setEditing(null); setShowModal(true) }}>
+                    <Plus size={13} /> Add
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -258,7 +265,7 @@ export function Tasks() {
             <input className="form-input" placeholder="e.g. Schematic Design" value={form.stage} onChange={e => setForm(f => ({ ...f, stage: e.target.value }))} />
           </div>
         </div>
-        {editing && (
+        {editing && canManage && (
           <div style={{ marginTop: 'var(--space-2)' }}>
             <button className="btn btn-danger btn-sm" onClick={() => { closeModal(); handleDelete(editing.id) }}>
               Delete Task

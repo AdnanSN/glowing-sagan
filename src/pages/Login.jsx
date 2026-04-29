@@ -3,7 +3,7 @@ import { useAuth } from '../lib/AuthContext'
 import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, KeyRound, UserPlus, LogIn } from 'lucide-react'
 
 // Invite codes that determine the user's role on sign-up.
-// Principal Architects → full admin control  |  Senior Architects → view/member access
+// Principals (CEOs) → full control of everything  |  Members (Senior Architects) → view only
 // Override via VITE_INVITE_CODE_PRINCIPAL / VITE_INVITE_CODE_SENIOR in .env.local
 const INVITE_CODES = {
   principal: import.meta.env.VITE_INVITE_CODE_PRINCIPAL || 'NHNPRINCIPAL',

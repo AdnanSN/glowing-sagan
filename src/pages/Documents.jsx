@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, FileText, ExternalLink, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -8,6 +9,8 @@ import { DOC_TYPES } from '../lib/constants'
 const EMPTY_FORM = { name: '', url: '', doc_type: 'Drawing', project_id: '', uploaded_by: '', notes: '' }
 
 export function Documents() {
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('manage_documents')
   const [docs, setDocs] = useState([])
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -76,9 +79,11 @@ export function Documents() {
           <span className="page-header-title">Documents</span>
           <span className="page-header-sub">{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
         </div>
-        <div className="page-header-actions">
-          <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Document</button>
-        </div>
+        {canManage && (
+          <div className="page-header-actions">
+            <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Document</button>
+          </div>
+        )}
       </div>
 
       <div className="page-body">
@@ -98,7 +103,7 @@ export function Documents() {
               <div className="empty-state-icon"><FileText /></div>
               <div className="empty-state-title">No documents yet</div>
               <div className="empty-state-desc">Add links to drawings, contracts, permits, and other project files</div>
-              <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Document</button>
+              {canManage && <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Document</button>}
             </div>
           </div>
         ) : (
@@ -126,9 +131,9 @@ export function Documents() {
                               <ExternalLink size={13} />
                             </a>
                           )}
-                          <button className="icon-btn" onClick={() => openEdit(doc)} title="Edit"><FileText size={13} /></button>
-                          <button className="icon-btn" onClick={() => handleDelete(doc.id)} title="Delete"
-                            style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>
+                          {canManage && <button className="icon-btn" onClick={() => openEdit(doc)} title="Edit"><FileText size={13} /></button>}
+                          {canManage && <button className="icon-btn" onClick={() => handleDelete(doc.id)} title="Delete"
+                            style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>}
                         </div>
                       </div>
                     </div>
