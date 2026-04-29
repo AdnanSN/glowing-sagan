@@ -55,9 +55,54 @@ export function AuthProvider({ children }) {
         .single()
 
       if (error || !roleData) {
-        // User exists in auth but has no role assigned
-        setUserRole('viewer')
-        setUserEmployee(null)
+        // No role row yet — check if sign-up stored a pending role in user metadata
+        const pendingRole = authUser.user_metadata?.pending_role
+        const pendingName = authUser.user_metadata?.full_name
+
+        if (pendingRole) {
+          console.log(`Creating user_roles row from metadata: role=${pendingRole}, name=${pendingName}`)
+
+          // Try to match the name to an employee record
+          let employeeId = null
+          if (pendingName) {
+            const { data: employees } = await supabase
+              .from('employees')
+              .select('id, name')
+            const matched = (employees || []).find(
+              e => e.name.toLowerCase().trim() === pendingName.toLowerCase().trim()
+            )
+            employeeId = matched?.id ?? null
+          }
+
+          const { data: newRole, error: insertError } = await supabase
+            .from('user_roles')
+            .insert({
+              auth_user_id: authUser.id,
+              employee_id: employeeId,
+              role: pendingRole,
+            })
+            .select('*, employees(*)')
+            .single()
+
+          if (insertError) {
+            console.error('Failed to create user role from metadata:', insertError)
+            setUserRole('viewer')
+            setUserEmployee(null)
+          } else {
+            console.log('User role created successfully:', newRole.role)
+            setUserRole(newRole.role)
+            setUserEmployee(newRole.employees || null)
+
+            // Clear the pending metadata now that the role is persisted
+            await supabase.auth.updateUser({
+              data: { pending_role: null, full_name: null },
+            })
+          }
+        } else {
+          // No pending role in metadata either — true viewer
+          setUserRole('viewer')
+          setUserEmployee(null)
+        }
       } else {
         setUserRole(roleData.role)
         setUserEmployee(roleData.employees || null)
@@ -79,40 +124,65 @@ export function AuthProvider({ children }) {
   }
 
   async function signUp(email, password, fullName, role = 'member') {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    // Store the intended role + name in user metadata during sign-up.
+    // This works even without an authenticated session because Supabase
+    // stores metadata as part of the auth.users record directly.
+    // The actual user_roles row is created on first login in fetchUserProfile.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          pending_role: role,
+          full_name: fullName,
+        },
+      },
+    })
     if (error) return { error, needsConfirmation: false }
 
-    const authUserId = data.user?.id
-    const needsConfirmation = !data.session // email confirm required
+    const needsConfirmation = !data.session
 
-    if (authUserId) {
-      // Try to match full name to an existing employee record
+    // If we got a session immediately (email confirm OFF), try to insert
+    // the role right now so the user doesn't have to re-login.
+    if (data.session && data.user) {
+      await createRoleFromMetadata(data.user)
+    }
+
+    console.log(`Sign-up complete. Role "${role}" stored in metadata for ${data.user?.id}`)
+    return { data, error: null, needsConfirmation }
+  }
+
+  // Helper: create the user_roles row from user metadata
+  async function createRoleFromMetadata(authUser) {
+    const role = authUser.user_metadata?.pending_role
+    const fullName = authUser.user_metadata?.full_name
+    if (!role) return
+
+    let employeeId = null
+    if (fullName) {
       const { data: employees } = await supabase
         .from('employees')
         .select('id, name')
-
       const matched = (employees || []).find(
-        e => e.name.toLowerCase().trim() === (fullName || '').toLowerCase().trim()
+        e => e.name.toLowerCase().trim() === fullName.toLowerCase().trim()
       )
-
-      // Insert user_role based on the invite code they used
-      // 'admin' = Principal Architect (full control)
-      // 'member' = Senior Architect (view only)
-      const { error: roleError } = await supabase.from('user_roles').insert({
-        auth_user_id: authUserId,
-        employee_id: matched?.id ?? null,
-        role,
-      })
-
-      if (roleError) {
-        console.error('Failed to insert user role:', roleError)
-        return { error: { message: 'Account created but role assignment failed. Contact your administrator.' }, needsConfirmation: false }
-      }
-
-      console.log(`User role assigned: ${role} for ${authUserId}`)
+      employeeId = matched?.id ?? null
     }
 
-    return { data, error: null, needsConfirmation }
+    const { error: roleError } = await supabase.from('user_roles').insert({
+      auth_user_id: authUser.id,
+      employee_id: employeeId,
+      role,
+    })
+
+    if (roleError) {
+      console.error('Failed to insert user role:', roleError)
+    } else {
+      console.log(`User role created: ${role}`)
+      await supabase.auth.updateUser({
+        data: { pending_role: null, full_name: null },
+      })
+    }
   }
 
   async function signOut() {
