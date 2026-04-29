@@ -2240,3 +2240,89 @@ img { max-width: 100%; }
     padding: var(--space-8) var(--space-6);
   }
 }
+
+/* ===========================
+   LOGIN TABS
+   =========================== */
+.login-tabs {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: var(--space-6);
+}
+
+.login-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: calc(var(--radius-md) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.login-tab:hover:not(.active) {
+  color: var(--text-primary);
+  background: rgba(0,0,0,0.04);
+}
+
+.login-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===========================
+   LOGIN SUCCESS ALERT
+   =========================== */
+.login-success {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--success-light);
+  border: 1px solid rgba(76, 175, 125, 0.25);
+  border-radius: var(--radius-md);
+  color: #2E7D52;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+  animation: fadeIn 0.3s ease;
+}
+
+/* ===========================
+   INVITE CODE HINT & LINK
+   =========================== */
+.login-invite-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.login-link {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: var(--transition);
+}
+
+.login-link:hover {
+  color: var(--accent-hover);
+}
+
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }

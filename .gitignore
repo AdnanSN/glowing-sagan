@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase seed scripts (contain service role key — never commit!)
+supabase/seed-users.mjs

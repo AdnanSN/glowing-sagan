@@ -78,6 +78,34 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
+  async function signUp(email, password, fullName) {
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) return { error, needsConfirmation: false }
+
+    const authUserId = data.user?.id
+    const needsConfirmation = !data.session // email confirm required
+
+    if (authUserId) {
+      // Try to match full name to an existing employee record
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('id, name')
+
+      const matched = (employees || []).find(
+        e => e.name.toLowerCase().trim() === (fullName || '').toLowerCase().trim()
+      )
+
+      // Insert user_role as 'member' (admin can upgrade later)
+      await supabase.from('user_roles').insert({
+        auth_user_id: authUserId,
+        employee_id: matched?.id ?? null,
+        role: 'member',
+      })
+    }
+
+    return { data, error: null, needsConfirmation }
+  }
+
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (!error) {
@@ -125,6 +153,7 @@ export function AuthProvider({ children }) {
     userEmployee,
     loading,
     signIn,
+    signUp,
     signOut,
     updatePassword,
     hasPermission,
