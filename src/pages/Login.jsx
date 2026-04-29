@@ -1,51 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, KeyRound, UserPlus, LogIn } from 'lucide-react'
-
-// Invite codes that determine the user's role on sign-up.
-// Principals (CEOs) → full control of everything  |  Members (Senior Architects) → view only
-// Override via VITE_INVITE_CODE_PRINCIPAL / VITE_INVITE_CODE_SENIOR in .env.local
-const INVITE_CODES = {
-  principal: import.meta.env.VITE_INVITE_CODE_PRINCIPAL || 'NHNPRINCIPAL',
-  senior:   import.meta.env.VITE_INVITE_CODE_SENIOR    || 'NHNSENIOR',
-}
-
-function resolveInviteCode(code) {
-  const trimmed = code.trim()
-  if (trimmed === INVITE_CODES.principal) return 'admin'
-  if (trimmed === INVITE_CODES.senior)    return 'member'
-  return null // invalid
-}
+import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react'
 
 export function Login() {
-  const { signIn, signUp } = useAuth()
-  const [tab, setTab] = useState('signin') // 'signin' | 'signup'
-
-  // Shared fields
+  const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-
-  // Sign-up only
-  const [fullName, setFullName] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [showInviteCode, setShowInviteCode] = useState(false)
-  const [confirmPassword, setConfirmPassword] = useState('')
-
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
-
-  function switchTab(newTab) {
-    setTab(newTab)
-    setError('')
-    setSuccess('')
-    setEmail('')
-    setPassword('')
-    setConfirmPassword('')
-    setFullName('')
-    setInviteCode('')
-  }
 
   async function handleSignIn(e) {
     e.preventDefault()
@@ -58,46 +21,6 @@ export function Login() {
           ? 'Invalid email or password. Please try again.'
           : authError.message
       )
-    }
-    setLoading(false)
-  }
-
-  async function handleSignUp(e) {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-
-    // Validate invite code and resolve the role
-    const resolvedRole = resolveInviteCode(inviteCode)
-    if (!resolvedRole) {
-      setError('Invalid invite code. Please ask your administrator.')
-      return
-    }
-
-    // Validate passwords match
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-
-    setLoading(true)
-    const { error: authError, needsConfirmation } = await signUp(email, password, fullName, resolvedRole)
-
-    if (authError) {
-      setError(
-        authError.message.includes('already registered')
-          ? 'An account with this email already exists. Try signing in.'
-          : authError.message
-      )
-    } else if (needsConfirmation) {
-      setSuccess('Account created! Check your email to confirm before signing in.')
-    } else {
-      setSuccess('Account created! You are now signed in.')
     }
     setLoading(false)
   }
@@ -150,226 +73,72 @@ export function Login() {
         {/* Right panel — Form */}
         <div className="login-form-panel">
           <div className="login-form-wrapper">
-            {/* Mobile logo */}
             <div className="login-mobile-logo">
               <div className="login-brand-logo-icon">N</div>
               <span style={{ fontWeight: 700, fontSize: 18 }}>NHN Architects</span>
             </div>
 
-            {/* Tab switcher */}
-            <div className="login-tabs">
-              <button
-                className={`login-tab${tab === 'signin' ? ' active' : ''}`}
-                onClick={() => switchTab('signin')}
-                id="tab-signin"
-                type="button"
-              >
-                <LogIn size={14} />
-                Sign In
-              </button>
-              <button
-                className={`login-tab${tab === 'signup' ? ' active' : ''}`}
-                onClick={() => switchTab('signup')}
-                id="tab-signup"
-                type="button"
-              >
-                <UserPlus size={14} />
-                Create Account
-              </button>
-            </div>
-
-            {/* Header */}
             <div className="login-form-header">
-              {tab === 'signin' ? (
-                <>
-                  <h2 className="login-form-title">Welcome back</h2>
-                  <p className="login-form-subtitle">Sign in to your account to continue</p>
-                </>
-              ) : (
-                <>
-                  <h2 className="login-form-title">Create account</h2>
-                  <p className="login-form-subtitle">You'll need the team invite code to register</p>
-                </>
-              )}
+              <h2 className="login-form-title">Welcome back</h2>
+              <p className="login-form-subtitle">Sign in to your account to continue</p>
             </div>
 
-            {/* Alerts */}
             {error && (
               <div className="login-error" id="login-error">
                 <AlertCircle size={16} />
                 <span>{error}</span>
               </div>
             )}
-            {success && (
-              <div className="login-success" id="login-success">
-                <CheckCircle size={16} />
-                <span>{success}</span>
+
+            <form onSubmit={handleSignIn} className="login-form" id="login-form">
+              <div className="login-field">
+                <label className="login-label" htmlFor="login-email">Email address</label>
+                <div className="login-input-wrapper">
+                  <Mail size={16} className="login-input-icon" />
+                  <input
+                    id="login-email"
+                    type="email"
+                    className="login-input"
+                    placeholder="you@nhn.local"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    autoFocus
+                  />
+                </div>
               </div>
-            )}
 
-            {/* ── SIGN IN FORM ── */}
-            {tab === 'signin' && (
-              <form onSubmit={handleSignIn} className="login-form" id="login-form">
-                <div className="login-field">
-                  <label className="login-label" htmlFor="login-email">Email address</label>
-                  <div className="login-input-wrapper">
-                    <Mail size={16} className="login-input-icon" />
-                    <input
-                      id="login-email"
-                      type="email"
-                      className="login-input"
-                      placeholder="you@nhn.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      autoComplete="email"
-                      autoFocus
-                    />
-                  </div>
+              <div className="login-field">
+                <label className="login-label" htmlFor="login-password">Password</label>
+                <div className="login-input-wrapper">
+                  <Lock size={16} className="login-input-icon" />
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    className="login-input"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                  />
+                  <button type="button" className="login-toggle-password"
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
+              </div>
 
-                <div className="login-field">
-                  <label className="login-label" htmlFor="login-password">Password</label>
-                  <div className="login-input-wrapper">
-                    <Lock size={16} className="login-input-icon" />
-                    <input
-                      id="login-password"
-                      type={showPassword ? 'text' : 'password'}
-                      className="login-input"
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                    />
-                    <button type="button" className="login-toggle-password"
-                      onClick={() => setShowPassword(v => !v)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <button type="submit" className="login-submit-btn"
-                  disabled={loading || !email || !password} id="login-submit">
-                  {loading ? <><div className="login-spinner" />Signing in…</> : 'Sign In'}
-                </button>
-              </form>
-            )}
-
-            {/* ── SIGN UP FORM ── */}
-            {tab === 'signup' && (
-              <form onSubmit={handleSignUp} className="login-form" id="signup-form">
-                <div className="login-field">
-                  <label className="login-label" htmlFor="signup-name">Full Name</label>
-                  <div className="login-input-wrapper">
-                    <Mail size={16} className="login-input-icon" />
-                    <input
-                      id="signup-name"
-                      type="text"
-                      className="login-input"
-                      placeholder="e.g. Aravinth S"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      required
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                <div className="login-field">
-                  <label className="login-label" htmlFor="signup-email">Email address</label>
-                  <div className="login-input-wrapper">
-                    <Mail size={16} className="login-input-icon" />
-                    <input
-                      id="signup-email"
-                      type="email"
-                      className="login-input"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      autoComplete="email"
-                    />
-                  </div>
-                </div>
-
-                <div className="login-field">
-                  <label className="login-label" htmlFor="signup-password">Password</label>
-                  <div className="login-input-wrapper">
-                    <Lock size={16} className="login-input-icon" />
-                    <input
-                      id="signup-password"
-                      type={showPassword ? 'text' : 'password'}
-                      className="login-input"
-                      placeholder="Min. 8 characters"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="new-password"
-                    />
-                    <button type="button" className="login-toggle-password"
-                      onClick={() => setShowPassword(v => !v)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="login-field">
-                  <label className="login-label" htmlFor="signup-confirm">Confirm Password</label>
-                  <div className="login-input-wrapper">
-                    <Lock size={16} className="login-input-icon" />
-                    <input
-                      id="signup-confirm"
-                      type="password"
-                      className="login-input"
-                      placeholder="Repeat your password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-
-                <div className="login-field">
-                  <label className="login-label" htmlFor="signup-invite">
-                    Invite Code
-                    <span className="login-invite-hint"> — determines your access level</span>
-                  </label>
-                  <div className="login-input-wrapper">
-                    <KeyRound size={16} className="login-input-icon" />
-                    <input
-                      id="signup-invite"
-                      type={showInviteCode ? 'text' : 'password'}
-                      className="login-input"
-                      placeholder="Enter invite code"
-                      value={inviteCode}
-                      onChange={(e) => setInviteCode(e.target.value)}
-                      required
-                    />
-                    <button type="button" className="login-toggle-password"
-                      onClick={() => setShowInviteCode(v => !v)}
-                      aria-label="Toggle invite code visibility">
-                      {showInviteCode ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <button type="submit" className="login-submit-btn"
-                  disabled={loading || !email || !password || !inviteCode || !fullName}
-                  id="signup-submit">
-                  {loading ? <><div className="login-spinner" />Creating account…</> : 'Create Account'}
-                </button>
-              </form>
-            )}
+              <button type="submit" className="login-submit-btn"
+                disabled={loading || !email || !password} id="login-submit">
+                {loading ? <><div className="login-spinner" />Signing in…</> : 'Sign In'}
+              </button>
+            </form>
 
             <div className="login-help">
-              {tab === 'signin'
-                ? <p>Contact your administrator if you need access or forgot your password.</p>
-                : <p>Already have an account? <button type="button" className="login-link" onClick={() => switchTab('signin')}>Sign in</button></p>
-              }
+              <p>Accounts are managed by your administrator. Contact them if you need access or to reset your password.</p>
             </div>
           </div>
         </div>

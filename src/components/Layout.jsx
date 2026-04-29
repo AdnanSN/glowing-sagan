@@ -19,13 +19,11 @@ const navItems = [
 const ROLE_LABELS = {
   admin: 'Principal Architect',
   member: 'Senior Architect',
-  viewer: 'Viewer',
 }
 
 const ROLE_COLORS = {
   admin: '#E05252',
   member: '#4A90D9',
-  viewer: '#6B6B6B',
 }
 
 export function Layout({ children }) {

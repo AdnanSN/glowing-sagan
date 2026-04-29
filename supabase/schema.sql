@@ -1,23 +1,17 @@
-// Supabase DB schema - run this in your Supabase SQL Editor
+-- ============================================================
+-- NHN Architects — Supabase Schema (fresh install)
+-- For an existing project, run migration_v2_auth.sql instead.
+-- ============================================================
 
--- EMPLOYEES
+-- EMPLOYEES (single source of truth for team members)
 create table if not exists employees (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  role text not null,
+  role text not null,                       -- job title, e.g. "Senior Architect"
   email text,
   color text not null default '#C8A96E',
+  auth_user_id uuid unique references auth.users(id) on delete set null,
   created_at timestamptz default now()
-);
-
--- USER_ROLES (links Supabase auth users to employees and assigns app roles)
-create table if not exists user_roles (
-  id uuid primary key default gen_random_uuid(),
-  auth_user_id uuid not null unique references auth.users(id) on delete cascade,
-  employee_id uuid references employees(id) on delete set null,
-  role text not null default 'member' check (role in ('admin', 'manager', 'member', 'viewer')),
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
 );
 
 -- PROJECTS
@@ -47,7 +41,7 @@ create table if not exists tasks (
   status text not null default 'To Do', -- To Do, In Progress, In Review, Done
   priority text not null default 'Medium', -- Low, Medium, High
   assignee_id uuid references employees(id) on delete set null,
-  start_date date,                        -- for Gantt chart
+  start_date date,
   due_date date,
   stage text,
   created_at timestamptz default now(),
@@ -70,7 +64,7 @@ create table if not exists documents (
   project_id uuid references projects(id) on delete cascade,
   name text not null,
   url text,
-  doc_type text default 'Other', -- Drawing, Contract, Permit, Report, Specification, Other
+  doc_type text default 'Other',
   uploaded_by text,
   notes text,
   created_at timestamptz default now()
@@ -85,78 +79,73 @@ create table if not exists comments (
   created_at timestamptz default now()
 );
 
+
+-- ============================================================
+-- AUTHORIZATION
+-- Roles live in auth.users.raw_app_meta_data.role ('admin' | 'member').
+-- Only the service role / dashboard can write app_metadata, so users
+-- cannot escalate themselves. All RLS policies read role from the JWT.
+-- ============================================================
+
+create or replace function public.current_user_role()
+returns text
+language sql
+stable
+as $$
+  select coalesce(auth.jwt() -> 'app_metadata' ->> 'role', 'member');
+$$;
+
+
 -- ENABLE RLS
-alter table employees enable row level security;
-alter table projects enable row level security;
-alter table tasks enable row level security;
+alter table employees  enable row level security;
+alter table projects   enable row level security;
+alter table tasks      enable row level security;
 alter table milestones enable row level security;
-alter table documents enable row level security;
-alter table comments enable row level security;
-alter table user_roles enable row level security;
+alter table documents  enable row level security;
+alter table comments   enable row level security;
 
--- RLS policies: authenticated users can read/write all data (small team, internal tool)
--- Employees
-create policy "Authenticated users can read employees" on employees for select to authenticated using (true);
-create policy "Authenticated users can insert employees" on employees for insert to authenticated with check (true);
-create policy "Authenticated users can update employees" on employees for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete employees" on employees for delete to authenticated using (true);
 
--- Projects
-create policy "Authenticated users can read projects" on projects for select to authenticated using (true);
-create policy "Authenticated users can insert projects" on projects for insert to authenticated with check (true);
-create policy "Authenticated users can update projects" on projects for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete projects" on projects for delete to authenticated using (true);
+-- READ: any authenticated user.   WRITE: admins only.
 
--- Tasks
-create policy "Authenticated users can read tasks" on tasks for select to authenticated using (true);
-create policy "Authenticated users can insert tasks" on tasks for insert to authenticated with check (true);
-create policy "Authenticated users can update tasks" on tasks for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete tasks" on tasks for delete to authenticated using (true);
+-- EMPLOYEES
+create policy "read employees"        on employees for select to authenticated using (true);
+create policy "admin write employees" on employees for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
 
--- Milestones
-create policy "Authenticated users can read milestones" on milestones for select to authenticated using (true);
-create policy "Authenticated users can insert milestones" on milestones for insert to authenticated with check (true);
-create policy "Authenticated users can update milestones" on milestones for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete milestones" on milestones for delete to authenticated using (true);
+-- PROJECTS
+create policy "read projects"         on projects for select to authenticated using (true);
+create policy "admin write projects"  on projects for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
 
--- Documents
-create policy "Authenticated users can read documents" on documents for select to authenticated using (true);
-create policy "Authenticated users can insert documents" on documents for insert to authenticated with check (true);
-create policy "Authenticated users can update documents" on documents for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete documents" on documents for delete to authenticated using (true);
+-- TASKS
+create policy "read tasks"            on tasks for select to authenticated using (true);
+create policy "admin write tasks"     on tasks for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
 
--- Comments
-create policy "Authenticated users can read comments" on comments for select to authenticated using (true);
-create policy "Authenticated users can insert comments" on comments for insert to authenticated with check (true);
-create policy "Authenticated users can update comments" on comments for update to authenticated using (true) with check (true);
-create policy "Authenticated users can delete comments" on comments for delete to authenticated using (true);
+-- MILESTONES
+create policy "read milestones"        on milestones for select to authenticated using (true);
+create policy "admin write milestones" on milestones for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
 
--- User Roles: users can read their own role, admins can manage all
-create policy "Users can read own role" on user_roles for select to authenticated
-  using (auth.uid() = auth_user_id);
-create policy "Admin can read all roles" on user_roles for select to authenticated
-  using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
-  );
-create policy "Users can insert own role" on user_roles for insert to authenticated
-  with check (auth.uid() = auth_user_id);
-create policy "Admin can insert roles" on user_roles for insert to authenticated
-  with check (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
-  );
-create policy "Admin can update roles" on user_roles for update to authenticated
-  using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
-  );
-create policy "Admin can delete roles" on user_roles for delete to authenticated
-  using (
-    exists (
-      select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
-    )
-  );
+-- DOCUMENTS
+create policy "read documents"        on documents for select to authenticated using (true);
+create policy "admin write documents" on documents for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
+
+-- COMMENTS — anyone authenticated can post, only admins can edit/delete
+create policy "read comments"         on comments for select to authenticated using (true);
+create policy "auth insert comments"  on comments for insert to authenticated with check (true);
+create policy "admin manage comments" on comments for all    to authenticated
+  using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
+
+
+-- ============================================================
+-- INITIAL ACCOUNTS — see migration_v2_auth.sql sections 6 & 7
+-- for the dashboard-add steps and the role-assignment SQL.
+-- ============================================================
