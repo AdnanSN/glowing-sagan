@@ -48,69 +48,22 @@ export function AuthProvider({ children }) {
 
   async function fetchUserProfile(authUser) {
     try {
-      // Look up the user_roles table to find the role and linked employee
-      const { data: roleData, error } = await supabase
-        .from('user_roles')
-        .select('*, employees(*)')
+      // Role lives in auth.users.raw_app_meta_data.role (set by migration v2).
+      // It is exposed to the client via the JWT as app_metadata.
+      const role = authUser.app_metadata?.role || 'member'
+      setUserRole(role)
+
+      // Linked employee row is found via employees.auth_user_id
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('*')
         .eq('auth_user_id', authUser.id)
-        .single()
+        .maybeSingle()
 
-      if (error || !roleData) {
-        // No role row yet — check if sign-up stored a pending role in user metadata
-        const pendingRole = authUser.user_metadata?.pending_role
-        const pendingName = authUser.user_metadata?.full_name
-
-        if (pendingRole) {
-          console.log(`Creating user_roles row from metadata: role=${pendingRole}, name=${pendingName}`)
-
-          // Try to match the name to an employee record
-          let employeeId = null
-          if (pendingName) {
-            const { data: employees } = await supabase
-              .from('employees')
-              .select('id, name')
-            const matched = (employees || []).find(
-              e => e.name.toLowerCase().trim() === pendingName.toLowerCase().trim()
-            )
-            employeeId = matched?.id ?? null
-          }
-
-          const { data: newRole, error: insertError } = await supabase
-            .from('user_roles')
-            .insert({
-              auth_user_id: authUser.id,
-              employee_id: employeeId,
-              role: pendingRole,
-            })
-            .select('*, employees(*)')
-            .single()
-
-          if (insertError) {
-            console.error('Failed to create user role from metadata:', insertError)
-            setUserRole('viewer')
-            setUserEmployee(null)
-          } else {
-            console.log('User role created successfully:', newRole.role)
-            setUserRole(newRole.role)
-            setUserEmployee(newRole.employees || null)
-
-            // Clear the pending metadata now that the role is persisted
-            await supabase.auth.updateUser({
-              data: { pending_role: null, full_name: null },
-            })
-          }
-        } else {
-          // No pending role in metadata either — true viewer
-          setUserRole('viewer')
-          setUserEmployee(null)
-        }
-      } else {
-        setUserRole(roleData.role)
-        setUserEmployee(roleData.employees || null)
-      }
+      setUserEmployee(employee || null)
     } catch (err) {
       console.error('Error fetching user profile:', err)
-      setUserRole('viewer')
+      setUserRole(authUser.app_metadata?.role || 'member')
       setUserEmployee(null)
     }
     setLoading(false)
