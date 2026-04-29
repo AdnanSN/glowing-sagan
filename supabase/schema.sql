@@ -140,6 +140,8 @@ create policy "Admin can read all roles" on user_roles for select to authenticat
       select 1 from user_roles ur where ur.auth_user_id = auth.uid() and ur.role = 'admin'
     )
   );
+create policy "Users can insert own role" on user_roles for insert to authenticated
+  with check (auth.uid() = auth_user_id);
 create policy "Admin can insert roles" on user_roles for insert to authenticated
   with check (
     exists (

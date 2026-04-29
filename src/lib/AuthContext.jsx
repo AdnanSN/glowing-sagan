@@ -98,11 +98,18 @@ export function AuthProvider({ children }) {
       // Insert user_role based on the invite code they used
       // 'admin' = Principal Architect (full control)
       // 'member' = Senior Architect (view only)
-      await supabase.from('user_roles').insert({
+      const { error: roleError } = await supabase.from('user_roles').insert({
         auth_user_id: authUserId,
         employee_id: matched?.id ?? null,
         role,
       })
+
+      if (roleError) {
+        console.error('Failed to insert user role:', roleError)
+        return { error: { message: 'Account created but role assignment failed. Contact your administrator.' }, needsConfirmation: false }
+      }
+
+      console.log(`User role assigned: ${role} for ${authUserId}`)
     }
 
     return { data, error: null, needsConfirmation }
