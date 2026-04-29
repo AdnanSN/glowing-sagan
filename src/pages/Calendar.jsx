@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, isToday } from 'date-fns'
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 
 export function Calendar() {
   const [milestones, setMilestones] = useState([])
@@ -57,6 +58,7 @@ export function Calendar() {
           <span className="page-header-sub">Milestones & task deadlines</span>
         </div>
         <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
           <button className="icon-btn" onClick={() => setCurrent(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><ChevronLeft size={15} /></button>
           <span style={{ fontWeight: 600, fontSize: 'var(--text-md)', minWidth: 140, textAlign: 'center' }}>
             {format(current, 'MMMM yyyy')}

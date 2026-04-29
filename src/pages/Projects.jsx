@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, Pencil, Trash2, FolderKanban } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { format } from 'date-fns'
 import {
   STAGES, PROJECT_TYPES, PROJECT_STATUSES, PROJECT_COLORS, getStatusColor
@@ -90,11 +91,12 @@ export function Projects() {
           <span className="page-header-title">Projects</span>
           <span className="page-header-sub">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
         </div>
-        {canManage && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchProjects} />
+          {canManage && (
             <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="page-body">

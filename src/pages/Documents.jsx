@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, FileText, ExternalLink, Trash2 } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { format } from 'date-fns'
 import { DOC_TYPES } from '../lib/constants'
 
@@ -79,11 +80,12 @@ export function Documents() {
           <span className="page-header-title">Documents</span>
           <span className="page-header-sub">{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
         </div>
-        {canManage && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
+          {canManage && (
             <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Document</button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="page-body">

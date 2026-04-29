@@ -5,6 +5,7 @@ import {
   FolderKanban, CheckSquare, Users, AlertTriangle,
   TrendingUp, Clock, Plus, ArrowRight, Circle
 } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { format, isPast, isToday } from 'date-fns'
 import { STAGES, PROJECT_COLORS } from '../lib/constants'
 
@@ -55,6 +56,7 @@ export function Dashboard() {
           <span className="page-header-sub">{format(new Date(), 'EEEE, d MMMM yyyy')}</span>
         </div>
         <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
           <Link to="/projects" className="btn btn-primary"><Plus size={15} /> New Project</Link>
         </div>
       </div>

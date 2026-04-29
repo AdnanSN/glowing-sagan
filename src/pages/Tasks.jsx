@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, CheckSquare } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 
@@ -123,11 +124,12 @@ export function Tasks() {
           <span className="page-header-title">Tasks</span>
           <span className="page-header-sub">{tasks.filter(t => t.status !== 'Done').length} open tasks</span>
         </div>
-        {canManage && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
+          {canManage && (
             <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="page-body">

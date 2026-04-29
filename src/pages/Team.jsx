@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal } from '../components/Modal'
 import { Plus, Users, Pencil, Trash2 } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { PROJECT_COLORS } from '../lib/constants'
 
 const ROLES = [
@@ -82,6 +83,7 @@ export function Team() {
           <span className="page-header-sub">{employees.length} member{employees.length !== 1 ? 's' : ''}</span>
         </div>
         <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
           <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Member</button>
         </div>
       </div>

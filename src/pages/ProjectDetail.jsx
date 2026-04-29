@@ -7,6 +7,7 @@ import {
   ArrowLeft, Plus, CheckSquare, Check, Pencil, Trash2,
   FileText, ExternalLink, Send, Flag, MapPin, Calendar, DollarSign, Clock
 } from 'lucide-react'
+import { RefreshButton } from '../components/RefreshButton'
 import { format, isPast, isToday } from 'date-fns'
 import {
   STAGES, STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
@@ -225,11 +226,12 @@ export function ProjectDetail() {
             </div>
           </div>
         </div>
-        {canManage && (
-          <div className="page-header-actions">
+        <div className="page-header-actions">
+          <RefreshButton onRefresh={fetchAll} />
+          {canManage && (
             <Link to={`/projects`} state={{ edit: project.id }} className="btn btn-secondary btn-sm"><Pencil size={13} /> Edit Project</Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="page-body">
