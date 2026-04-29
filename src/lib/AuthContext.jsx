@@ -47,78 +47,32 @@ export function AuthProvider({ children }) {
 
   async function fetchUserProfile(authUser) {
     try {
-      // Look up the user_roles table to find the role and linked employee
-      const { data: roleData, error } = await supabase
+      // The on_auth_user_created trigger creates this row automatically at sign-up time,
+      // so it should always exist for any authenticated user.
+      const { data: roleData } = await supabase
         .from('user_roles')
         .select('*, employees(*)')
         .eq('auth_user_id', authUser.id)
         .single()
 
-      if (error || !roleData) {
-        // No role row yet — check if sign-up stored a pending role in user metadata
+      if (roleData) {
+        setUserRole(roleData.role)
+        setUserEmployee(roleData.employees || null)
+      } else {
+        // Fallback: trigger may not be installed — try to create the row from metadata.
         const pendingRole = authUser.user_metadata?.pending_role
-        const pendingName = authUser.user_metadata?.full_name
-
         if (pendingRole) {
-          console.log(`Creating user_roles row from metadata: role=${pendingRole}, name=${pendingName}`)
-
-          // Try to match the name to an employee record
-          let employeeId = null
-          if (pendingName) {
-            const { data: employees } = await supabase
-              .from('employees')
-              .select('id, name')
-            const matched = (employees || []).find(
-              e => e.name.toLowerCase().trim() === pendingName.toLowerCase().trim()
-            )
-            employeeId = matched?.id ?? null
-          }
-
-          const { data: newRole, error: insertError } = await supabase
+          const { data: newRole } = await supabase
             .from('user_roles')
-            .insert({
-              auth_user_id: authUser.id,
-              employee_id: employeeId,
-              role: pendingRole,
-            })
+            .insert({ auth_user_id: authUser.id, role: pendingRole })
             .select('*, employees(*)')
             .single()
-
-          if (insertError) {
-            // Another path (e.g. onAuthStateChange race) may have already inserted the row.
-            // Re-query before giving up.
-            const { data: existingRole } = await supabase
-              .from('user_roles')
-              .select('*, employees(*)')
-              .eq('auth_user_id', authUser.id)
-              .single()
-            if (existingRole) {
-              console.log('Role row already existed (race condition), using it:', existingRole.role)
-              setUserRole(existingRole.role)
-              setUserEmployee(existingRole.employees || null)
-            } else {
-              console.error('Failed to create user role from metadata:', insertError)
-              setUserRole('viewer')
-              setUserEmployee(null)
-            }
-          } else {
-            console.log('User role created successfully:', newRole.role)
-            setUserRole(newRole.role)
-            setUserEmployee(newRole.employees || null)
-
-            // Clear the pending metadata now that the role is persisted
-            await supabase.auth.updateUser({
-              data: { pending_role: null, full_name: null },
-            })
-          }
+          setUserRole(newRole?.role ?? 'viewer')
+          setUserEmployee(newRole?.employees ?? null)
         } else {
-          // No pending role in metadata either — true viewer
           setUserRole('viewer')
           setUserEmployee(null)
         }
-      } else {
-        setUserRole(roleData.role)
-        setUserEmployee(roleData.employees || null)
       }
     } catch (err) {
       console.error('Error fetching user profile:', err)
