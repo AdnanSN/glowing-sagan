@@ -11,21 +11,19 @@ const navItems = [
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/gantt', icon: GanttChart, label: 'Gantt Chart' },
-  { to: '/team', icon: Users, label: 'Team', roles: ['admin', 'manager'] },
+  { to: '/team', icon: Users, label: 'Team', roles: ['admin'] },
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { to: '/documents', icon: FileText, label: 'Documents' },
 ]
 
 const ROLE_LABELS = {
-  admin: 'Admin',
-  manager: 'Manager',
-  member: 'Member',
+  admin: 'Principal Architect',
+  member: 'Senior Architect',
   viewer: 'Viewer',
 }
 
 const ROLE_COLORS = {
   admin: '#E05252',
-  manager: '#C8A96E',
   member: '#4A90D9',
   viewer: '#6B6B6B',
 }

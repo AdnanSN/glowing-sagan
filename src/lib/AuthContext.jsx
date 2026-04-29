@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  async function signUp(email, password, fullName) {
+  async function signUp(email, password, fullName, role = 'member') {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) return { error, needsConfirmation: false }
 
@@ -95,11 +95,13 @@ export function AuthProvider({ children }) {
         e => e.name.toLowerCase().trim() === (fullName || '').toLowerCase().trim()
       )
 
-      // Insert user_role as 'member' (admin can upgrade later)
+      // Insert user_role based on the invite code they used
+      // 'admin' = Principal Architect (full control)
+      // 'member' = Senior Architect (view only)
       await supabase.from('user_roles').insert({
         auth_user_id: authUserId,
         employee_id: matched?.id ?? null,
-        role: 'member',
+        role,
       })
     }
 
@@ -125,19 +127,18 @@ export function AuthProvider({ children }) {
   }
 
   // Role-based permission checks
+  // admin  = Principal Architect → full control of everything
+  // member = Senior Architect   → view / read-only access
   function hasPermission(action) {
     const permissions = {
       admin: [
         'manage_team', 'manage_projects', 'manage_tasks',
         'manage_documents', 'manage_roles', 'view_all',
         'delete_projects', 'delete_tasks', 'delete_members',
-      ],
-      manager: [
-        'manage_projects', 'manage_tasks', 'manage_documents',
-        'view_all', 'delete_tasks',
+        'manage_settings', 'manage_billing', 'invite_users',
       ],
       member: [
-        'manage_tasks', 'view_all', 'manage_documents',
+        'view_all',
       ],
       viewer: [
         'view_all',

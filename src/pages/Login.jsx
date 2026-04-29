@@ -2,10 +2,20 @@ import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle, KeyRound, UserPlus, LogIn } from 'lucide-react'
 
-// The invite code your team members need to create an account.
-// Change this to anything you want — share it verbally or via WhatsApp.
-// To change it later: update VITE_INVITE_CODE in your .env.local file.
-const INVITE_CODE = import.meta.env.VITE_INVITE_CODE || 'NHN2024'
+// Invite codes that determine the user's role on sign-up.
+// Principal Architects → full admin control  |  Senior Architects → view/member access
+// Override via VITE_INVITE_CODE_PRINCIPAL / VITE_INVITE_CODE_SENIOR in .env.local
+const INVITE_CODES = {
+  principal: import.meta.env.VITE_INVITE_CODE_PRINCIPAL || 'NHNPRINCIPAL',
+  senior:   import.meta.env.VITE_INVITE_CODE_SENIOR    || 'NHNSENIOR',
+}
+
+function resolveInviteCode(code) {
+  const trimmed = code.trim()
+  if (trimmed === INVITE_CODES.principal) return 'admin'
+  if (trimmed === INVITE_CODES.senior)    return 'member'
+  return null // invalid
+}
 
 export function Login() {
   const { signIn, signUp } = useAuth()
@@ -57,8 +67,9 @@ export function Login() {
     setError('')
     setSuccess('')
 
-    // Validate invite code
-    if (inviteCode.trim() !== INVITE_CODE) {
+    // Validate invite code and resolve the role
+    const resolvedRole = resolveInviteCode(inviteCode)
+    if (!resolvedRole) {
       setError('Invalid invite code. Please ask your administrator.')
       return
     }
@@ -75,7 +86,7 @@ export function Login() {
     }
 
     setLoading(true)
-    const { error: authError, needsConfirmation } = await signUp(email, password, fullName)
+    const { error: authError, needsConfirmation } = await signUp(email, password, fullName, resolvedRole)
 
     if (authError) {
       setError(
@@ -325,7 +336,7 @@ export function Login() {
                 <div className="login-field">
                   <label className="login-label" htmlFor="signup-invite">
                     Invite Code
-                    <span className="login-invite-hint"> — ask your admin</span>
+                    <span className="login-invite-hint"> — determines your access level</span>
                   </label>
                   <div className="login-input-wrapper">
                     <KeyRound size={16} className="login-input-icon" />
