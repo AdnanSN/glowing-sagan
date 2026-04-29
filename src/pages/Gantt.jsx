@@ -13,7 +13,9 @@ import { format, addDays, startOfWeek, endOfWeek, differenceInDays,
 /* ─────────────────────────── helpers ────────────────────────────── */
 const CELL_W_DEFAULT = 48   // px per day at zoom=1
 const ROW_H          = 52
-const LABEL_W        = 260
+const LABEL_W        = 400
+const TASK_COL_W     = 250
+const ASSIGNEE_COL_W = 150
 
 const PRIORITY_COLORS = { Low: '#4CAF7D', Medium: '#F0A500', High: '#E05252' }
 const STATUS_COLORS   = {
@@ -269,8 +271,13 @@ export function Gantt() {
         {/* Left label panel */}
         <div style={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)' }}>
           {/* Header placeholder */}
-          <div style={{ height: 72, borderBottom: '1px solid var(--border-light)', flexShrink: 0, padding: 'var(--space-3) var(--space-4)', display: 'flex', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Task / Milestone</span>
+          <div style={{ height: 72, borderBottom: '1px solid var(--border-light)', flexShrink: 0, display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{ width: TASK_COL_W, padding: 'var(--space-3) var(--space-4)', flexShrink: 0 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Task / Milestone</span>
+            </div>
+            <div style={{ width: ASSIGNEE_COL_W, padding: 'var(--space-3) var(--space-4)', flexShrink: 0, borderLeft: '1px solid var(--border-light)' }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Assignee</span>
+            </div>
           </div>
           {/* Rows */}
           <div style={{ overflowY: 'auto', flex: 1 }} id="gantt-label-scroll">
@@ -514,9 +521,12 @@ function GanttLabelRow({ row, onEdit }) {
   if (row.type === 'project-header') {
     const p = row.project
     return (
-      <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+      <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
+        <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', flexShrink: 0 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+        </div>
+        <div style={{ width: ASSIGNEE_COL_W, flexShrink: 0, borderLeft: '1px solid var(--border-light)' }} />
       </div>
     )
   }
@@ -524,12 +534,15 @@ function GanttLabelRow({ row, onEdit }) {
   if (row.type === 'milestone') {
     const m = row.milestone
     return (
-      <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
-        <div style={{ width: 12, height: 12, background: m.is_completed ? 'var(--success)' : 'var(--accent-primary)', borderRadius: 2, transform: 'rotate(45deg)', flexShrink: 0, marginLeft: 16 }} />
-        <span style={{ fontSize: 'var(--text-xs)', color: m.is_completed ? 'var(--text-muted)' : 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: m.is_completed ? 'line-through' : 'none' }}>
-          {m.title}
-        </span>
-        {m.due_date && <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>{format(parseISO(m.due_date), 'd MMM')}</span>}
+      <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
+        <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', flexShrink: 0 }}>
+          <div style={{ width: 12, height: 12, background: m.is_completed ? 'var(--success)' : 'var(--accent-primary)', borderRadius: 2, transform: 'rotate(45deg)', flexShrink: 0, marginLeft: 16 }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: m.is_completed ? 'var(--text-muted)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: m.is_completed ? 'line-through' : 'none', flex: 1 }}>
+            {m.title}
+          </span>
+          {m.due_date && <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>{format(parseISO(m.due_date), 'd MMM')}</span>}
+        </div>
+        <div style={{ width: ASSIGNEE_COL_W, flexShrink: 0, borderLeft: '1px solid var(--border-light)' }} />
       </div>
     )
   }
@@ -539,27 +552,40 @@ function GanttLabelRow({ row, onEdit }) {
 
   return (
     <div
-      style={{ height: ROW_H, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3) 0 calc(var(--space-4) + 8px)', borderBottom: '1px solid var(--border-light)', flexShrink: 0, cursor: 'pointer', transition: 'background 0.15s' }}
+      style={{ height: ROW_H, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-light)', flexShrink: 0, cursor: 'pointer', transition: 'background 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-light)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       onDoubleClick={() => onEdit(task)}
     >
-      {/* priority dot */}
-      <div style={{ width: 7, height: 7, borderRadius: '50%', background: PRIORITY_DOT[task.priority] || '#ccc', flexShrink: 0 }} />
+      {/* Task name column */}
+      <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3) 0 calc(var(--space-4) + 8px)', flexShrink: 0, overflow: 'hidden' }}>
+        {/* priority dot */}
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: PRIORITY_DOT[task.priority] || '#ccc', flexShrink: 0 }} />
 
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: task.status === 'Done' ? 400 : 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none' }}>
-        {task.title}
-      </span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: task.status === 'Done' ? 400 : 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none' }}>
+          {task.title}
+        </span>
 
-      {task.assignee && (
-        <div style={{ width: 20, height: 20, borderRadius: '50%', background: task.assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0 }} title={task.assignee.name}>
-          {task.assignee.name.charAt(0)}
-        </div>
-      )}
+        <button className="icon-btn" style={{ padding: 2, opacity: 0.5, flexShrink: 0 }} onClick={e => { e.stopPropagation(); onEdit(task) }}>
+          <Pencil size={11} />
+        </button>
+      </div>
 
-      <button className="icon-btn" style={{ padding: 2, opacity: 0.5, flexShrink: 0 }} onClick={e => { e.stopPropagation(); onEdit(task) }}>
-        <Pencil size={11} />
-      </button>
+      {/* Assignee column */}
+      <div style={{ width: ASSIGNEE_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3)', flexShrink: 0, borderLeft: '1px solid var(--border-light)', overflow: 'hidden' }}>
+        {task.assignee ? (
+          <>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: task.assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+              {task.assignee.name.charAt(0)}
+            </div>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+              {task.assignee.name}
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontStyle: 'italic' }}>Unassigned</span>
+        )}
+      </div>
     </div>
   )
 }
