@@ -163,39 +163,6 @@ export function AuthProvider({ children }) {
     return { data, error: null, needsConfirmation }
   }
 
-  // Helper: create the user_roles row from user metadata
-  async function createRoleFromMetadata(authUser) {
-    const role = authUser.user_metadata?.pending_role
-    const fullName = authUser.user_metadata?.full_name
-    if (!role) return
-
-    let employeeId = null
-    if (fullName) {
-      const { data: employees } = await supabase
-        .from('employees')
-        .select('id, name')
-      const matched = (employees || []).find(
-        e => e.name.toLowerCase().trim() === fullName.toLowerCase().trim()
-      )
-      employeeId = matched?.id ?? null
-    }
-
-    const { error: roleError } = await supabase.from('user_roles').insert({
-      auth_user_id: authUser.id,
-      employee_id: employeeId,
-      role,
-    })
-
-    if (roleError) {
-      console.error('Failed to insert user role:', roleError)
-    } else {
-      console.log(`User role created: ${role}`)
-      await supabase.auth.updateUser({
-        data: { pending_role: null, full_name: null },
-      })
-    }
-  }
-
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (!error) {
