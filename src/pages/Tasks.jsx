@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, CheckSquare } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
+import { Avatar } from '../components/Avatar'
 import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 
@@ -45,7 +46,7 @@ export function Tasks() {
   async function fetchAll() {
     setLoading(true)
     const [t, p, e] = await Promise.all([
-      supabase.from('tasks').select('*, assignee:employees(id,name,color), project:projects(id,name,color)').order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color)').order('created_at', { ascending: false }),
       supabase.from('projects').select('id,name,color').order('name'),
       supabase.from('employees').select('*').order('name'),
     ])
@@ -195,9 +196,12 @@ export function Tasks() {
                             </span>
                           )}
                           {task.assignee && (
-                            <div className="avatar avatar-sm" style={{ background: task.assignee.color }} title={task.assignee.name}>
-                              {task.assignee.name.charAt(0)}
-                            </div>
+                            <Avatar
+                              name={task.assignee.name}
+                              color={task.assignee.color}
+                              avatarUrl={task.assignee.avatar_url}
+                              size="sm"
+                            />
                           )}
                         </div>
                       </div>

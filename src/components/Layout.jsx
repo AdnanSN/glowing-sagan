@@ -66,6 +66,7 @@ export function Layout({ children }) {
   const displayName = userEmployee?.name || user?.email?.split('@')[0] || 'User'
   const displayInitial = displayName.charAt(0).toUpperCase()
   const avatarColor = userEmployee?.color || '#2A2722'
+  const avatarUrl = userEmployee?.avatar_url || ''
 
   return (
     <div className="app-shell">
@@ -104,7 +105,13 @@ export function Layout({ children }) {
         {/* User section at bottom */}
         <div className="sidebar-user-section">
           <div className="sidebar-user-info">
-            <div className="sidebar-user-avatar" style={{ background: avatarColor }}>
+            <div className="sidebar-user-avatar" style={{
+              background: avatarColor,
+              backgroundImage: avatarUrl ? `url("${avatarUrl}")` : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              color: avatarUrl ? 'transparent' : 'white',
+            }}>
               {displayInitial}
             </div>
             <div className="sidebar-user-details">

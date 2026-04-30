@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal } from '../components/Modal'
-import { Plus, Users, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Users, Pencil, Trash2, Upload, Trash } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
+import { Avatar } from '../components/Avatar'
 import { PROJECT_COLORS } from '../lib/constants'
 
 const ROLES = [
@@ -11,7 +12,8 @@ const ROLES = [
   'CAD Technician', 'Landscape Architect', 'Site Supervisor', 'Other'
 ]
 
-const EMPTY_FORM = { name: '', role: 'Architect', email: '', color: PROJECT_COLORS[0] }
+const EMPTY_FORM = { name: '', role: 'Architect', email: '', color: PROJECT_COLORS[0], avatar_url: '' }
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024 // 2 MB
 
 export function Team() {
   const [employees, setEmployees] = useState([])
@@ -21,6 +23,9 @@ export function Team() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileInputRef = useRef(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -44,9 +49,61 @@ export function Team() {
     setLoading(false)
   }
 
-  function openNew() { setEditing(null); setForm(EMPTY_FORM); setShowModal(true) }
-  function openEdit(emp) { setEditing(emp); setForm({ ...emp, email: emp.email || '' }); setShowModal(true) }
-  function closeModal() { setShowModal(false); setEditing(null) }
+  function openNew() {
+    setEditing(null)
+    setForm(EMPTY_FORM)
+    setUploadError('')
+    setShowModal(true)
+  }
+  function openEdit(emp) {
+    setEditing(emp)
+    setForm({ ...emp, email: emp.email || '', avatar_url: emp.avatar_url || '' })
+    setUploadError('')
+    setShowModal(true)
+  }
+  function closeModal() {
+    setShowModal(false)
+    setEditing(null)
+    setUploadError('')
+  }
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploadError('')
+
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setUploadError('Image must be under 2 MB.')
+      return
+    }
+
+    setUploading(true)
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+    const path = `${editing?.id || 'new'}-${Date.now()}.${ext}`
+    const { error: uploadErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type })
+
+    if (uploadErr) {
+      setUploading(false)
+      setUploadError(uploadErr.message || 'Upload failed.')
+      return
+    }
+
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+    setForm(f => ({ ...f, avatar_url: urlData?.publicUrl || '' }))
+    setUploading(false)
+  }
+
+  function clearAvatar() {
+    setForm(f => ({ ...f, avatar_url: '' }))
+    setUploadError('')
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -69,7 +126,7 @@ export function Team() {
   const modalFooter = (
     <>
       <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
-      <button className="btn btn-primary" onClick={handleSave} disabled={!form.name || !form.role || saving}>
+      <button className="btn btn-primary" onClick={handleSave} disabled={!form.name || !form.role || saving || uploading}>
         {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Member'}
       </button>
     </>
@@ -107,9 +164,7 @@ export function Team() {
               return (
                 <div key={emp.id} className="card" style={{ padding: 'var(--space-5)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-                    <div className="avatar avatar-lg" style={{ background: emp.color }}>
-                      {emp.name.charAt(0)}
-                    </div>
+                    <Avatar name={emp.name} color={emp.color} avatarUrl={emp.avatar_url} size="lg" />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>{emp.name}</div>
                       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{emp.role}</div>
@@ -143,6 +198,54 @@ export function Team() {
       </div>
 
       <Modal isOpen={showModal} onClose={closeModal} title={editing ? 'Edit Team Member' : 'Add Team Member'} footer={modalFooter}>
+        <div className="form-group">
+          <label className="form-label">Profile Picture</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+            <Avatar
+              name={form.name || '?'}
+              color={form.color}
+              avatarUrl={form.avatar_url}
+              size="lg"
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Upload size={13} />
+                  {uploading ? 'Uploading…' : form.avatar_url ? 'Replace' : 'Upload Image'}
+                </button>
+                {form.avatar_url && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={clearAvatar}
+                    disabled={uploading}
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    <Trash size={13} /> Remove
+                  </button>
+                )}
+              </div>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                PNG or JPG, up to 2 MB. Falls back to the avatar colour below.
+              </span>
+              {uploadError && (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{uploadError}</span>
+              )}
+            </div>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarChange}
+          />
+        </div>
         <div className="form-group">
           <label className="form-label">Full Name *</label>
           <input className="form-input" placeholder="e.g. Sarah Al-Mansouri" value={form.name}
