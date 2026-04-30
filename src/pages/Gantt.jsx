@@ -76,7 +76,7 @@ export function Gantt() {
     setLoading(true)
     const [p, t, m, e] = await Promise.all([
       supabase.from('projects').select('id,name,color,start_date,end_date,status').order('name'),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').order('created_at'),
+      supabase.from('tasks').select('*, assignee:employees(id,name,color)').order('created_at'),
       supabase.from('milestones').select('*').order('due_date'),
       supabase.from('employees').select('*').order('name'),
     ])
@@ -603,10 +603,8 @@ function TaskBar({ task, geo, rgb, statusC, isDone, isDragging, progress, rowH, 
         <div style={{
           width: 20, height: 20, borderRadius: '50%',
           background: task.assignee.color,
-          backgroundImage: task.assignee.avatar_url ? `url("${task.assignee.avatar_url}")` : undefined,
-          backgroundSize: 'cover', backgroundPosition: 'center',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, fontWeight: 700, color: task.assignee.avatar_url ? 'transparent' : 'white', flexShrink: 0, marginRight: 6,
+          fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0, marginRight: 6,
           boxShadow: '0 0 0 2px rgba(255,255,255,0.95)',
           position: 'relative', zIndex: 1,
         }} title={task.assignee.name}>
@@ -681,14 +679,7 @@ function GanttLabelRow({ row, onEdit }) {
       <div style={{ width: ASSIGNEE_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3)', flexShrink: 0, borderLeft: '1px solid var(--border-light)', overflow: 'hidden' }}>
         {task.assignee ? (
           <>
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%',
-              background: task.assignee.color,
-              backgroundImage: task.assignee.avatar_url ? `url("${task.assignee.avatar_url}")` : undefined,
-              backgroundSize: 'cover', backgroundPosition: 'center',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 700, color: task.assignee.avatar_url ? 'transparent' : 'white', flexShrink: 0
-            }}>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: task.assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0 }}>
               {task.assignee.name.charAt(0)}
             </div>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>

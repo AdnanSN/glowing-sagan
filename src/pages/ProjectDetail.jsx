@@ -8,7 +8,6 @@ import {
   FileText, ExternalLink, Send, Flag, MapPin, Calendar, DollarSign, Clock
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
-import { Avatar } from '../components/Avatar'
 import { format, isPast, isToday } from 'date-fns'
 import {
   STAGES, STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
@@ -57,7 +56,7 @@ export function ProjectDetail() {
     setLoading(true)
     const [p, t, m, d, c, e] = await Promise.all([
       supabase.from('projects').select('*').eq('id', id).single(),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').eq('project_id', id).order('created_at'),
+      supabase.from('tasks').select('*, assignee:employees(id,name,color)').eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('comments').select('*').eq('project_id', id).order('created_at'),
@@ -366,12 +365,9 @@ export function ProjectDetail() {
                                 </span>
                               )}
                               {task.assignee && (
-                                <Avatar
-                                  name={task.assignee.name}
-                                  color={task.assignee.color}
-                                  avatarUrl={task.assignee.avatar_url}
-                                  size="sm"
-                                />
+                                <div className="avatar avatar-sm" style={{ background: task.assignee.color }} title={task.assignee.name}>
+                                  {task.assignee.name.charAt(0)}
+                                </div>
                               )}
                               {canManage && <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>}
                               {canManage && <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}

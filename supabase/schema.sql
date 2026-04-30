@@ -10,7 +10,6 @@ create table if not exists employees (
   role text not null,                       -- job title, e.g. "Senior Architect"
   email text,
   color text not null default '#C8A96E',
-  avatar_url text,
   auth_user_id uuid unique references auth.users(id) on delete set null,
   created_at timestamptz default now()
 );

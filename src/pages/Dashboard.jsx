@@ -6,7 +6,6 @@ import {
   TrendingUp, Clock, Plus, ArrowRight, Circle
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
-import { Avatar } from '../components/Avatar'
 import { format, isPast, isToday } from 'date-fns'
 import { STAGES, PROJECT_COLORS } from '../lib/constants'
 
@@ -25,7 +24,7 @@ export function Dashboard() {
     setLoading(true)
     const [p, t, e, m] = await Promise.all([
       supabase.from('projects').select('*').order('created_at', { ascending: false }),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*, assignee:employees(id,name,color)').order('created_at', { ascending: false }),
       supabase.from('employees').select('*').order('name'),
       supabase.from('milestones').select('*, project:projects(name)').order('due_date'),
     ])
@@ -176,7 +175,9 @@ export function Dashboard() {
                           </div>
                           <div className="avatar-group">
                             {assignees.map(a => (
-                              <Avatar key={a.id} name={a.name} color={a.color} avatarUrl={a.avatar_url} size="sm" />
+                              <div key={a.id} className="avatar avatar-sm" style={{ background: a.color }} title={a.name}>
+                                {a.name.charAt(0)}
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -232,7 +233,7 @@ export function Dashboard() {
                     const assigned = tasks.filter(t => t.assignee_id === emp.id && t.status !== 'Done').length
                     return (
                       <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0' }}>
-                        <Avatar name={emp.name} color={emp.color} avatarUrl={emp.avatar_url} />
+                        <div className="avatar" style={{ background: emp.color }}>{emp.name.charAt(0)}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{emp.name}</div>
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{emp.role}</div>
