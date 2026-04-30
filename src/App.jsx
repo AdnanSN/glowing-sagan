@@ -19,11 +19,11 @@ function SetupBanner() {
   return (
     <div style={{
       position: 'fixed', bottom: 20, right: 20, zIndex: 9999,
-      background: '#1C1C1E', color: '#F5EDD8', borderRadius: 12,
+      background: '#1A1815', color: '#ECE9E2', borderRadius: 12,
       padding: '16px 20px', maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-      fontSize: 13, lineHeight: 1.6, border: '1px solid rgba(200,169,110,0.3)'
+      fontSize: 13, lineHeight: 1.6, border: '1px solid rgba(236,233,226,0.18)'
     }}>
-      <div style={{ fontWeight: 700, marginBottom: 6, color: '#C8A96E' }}>⚡ Supabase Setup Required</div>
+      <div style={{ fontWeight: 700, marginBottom: 6, color: '#ECE9E2' }}>⚡ Supabase Setup Required</div>
       <div>Create a <code style={{ background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: 4 }}>.env.local</code> file in the project root with:</div>
       <pre style={{ marginTop: 8, background: 'rgba(255,255,255,0.06)', padding: 10, borderRadius: 8, fontSize: 11, overflowX: 'auto' }}>
 {`VITE_SUPABASE_URL=your_url

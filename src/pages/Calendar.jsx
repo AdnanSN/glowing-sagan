@@ -37,7 +37,7 @@ export function Calendar() {
     const dayStr = format(day, 'yyyy-MM-dd')
     const events = []
     milestones.filter(m => m.due_date === dayStr).forEach(m =>
-      events.push({ label: `🏁 ${m.title}`, color: m.project?.color || '#C8A96E', type: 'milestone' })
+      events.push({ label: `🏁 ${m.title}`, color: m.project?.color || '#2A2722', type: 'milestone' })
     )
     tasks.filter(t => t.due_date === dayStr).forEach(t =>
       events.push({ label: t.title, color: t.project?.color || '#4A90D9', type: 'task' })

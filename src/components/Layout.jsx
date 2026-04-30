@@ -65,7 +65,7 @@ export function Layout({ children }) {
 
   const displayName = userEmployee?.name || user?.email?.split('@')[0] || 'User'
   const displayInitial = displayName.charAt(0).toUpperCase()
-  const avatarColor = userEmployee?.color || '#C8A96E'
+  const avatarColor = userEmployee?.color || '#2A2722'
 
   return (
     <div className="app-shell">

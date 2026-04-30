@@ -4,25 +4,25 @@
    CSS DESIGN SYSTEM
    =========================== */
 :root {
-  /* Colors - Architect Palette */
-  --bg-primary: #F8F7F4;
+  /* Colors - NHN Architects Palette (monochromatic, derived from business card) */
+  --bg-primary: #F4F2EC;       /* warm cream — card background */
   --bg-secondary: #FFFFFF;
-  --bg-tertiary: #F2F0EC;
-  --bg-sidebar: #1C1C1E;
+  --bg-tertiary: #ECE9E2;
+  --bg-sidebar: #1A1815;       /* near-black warm — logo bars */
 
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-muted: #9E9E9E;
+  --text-primary: #1A1815;
+  --text-secondary: #5C584F;
+  --text-muted: #8E8A82;
   --text-inverse: #FFFFFF;
-  --text-sidebar: #E8E8E6;
-  --text-sidebar-muted: #8A8A88;
+  --text-sidebar: #ECE9E2;
+  --text-sidebar-muted: #8A847A;
 
-  --accent-primary: #C8A96E;   /* Warm gold */
-  --accent-hover: #B8965A;
-  --accent-light: #F5EDD8;
+  --accent-primary: #2A2722;   /* dark warm charcoal — matches NHN logo bars */
+  --accent-hover: #4A463F;     /* lighter charcoal for hover */
+  --accent-light: #E8E4DC;     /* warm light tint */
 
-  --border-light: #E8E6E1;
-  --border-medium: #D4D0C8;
+  --border-light: #E0DCD3;
+  --border-medium: #C8C3B8;
 
   --success: #4CAF7D;
   --success-light: #E8F5ED;
@@ -190,13 +190,13 @@ img { max-width: 100%; }
 .sidebar-logo-icon {
   width: 36px;
   height: 36px;
-  background: var(--accent-primary);
+  background: #ECE9E2;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
-  color: white;
+  color: #1A1815;
   font-size: 18px;
   font-weight: 400;
   flex-shrink: 0;
@@ -259,8 +259,8 @@ img { max-width: 100%; }
 }
 
 .nav-item.active {
-  background: rgba(200, 169, 110, 0.15);
-  color: var(--accent-primary);
+  background: rgba(236, 233, 226, 0.10);
+  color: var(--text-sidebar);
   font-weight: 500;
 }
 
@@ -623,7 +623,7 @@ img { max-width: 100%; }
 .form-select:focus,
 .form-textarea:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(200, 169, 110, 0.15);
+  box-shadow: 0 0 0 3px rgba(42, 39, 34, 0.12);
 }
 
 .form-textarea { resize: vertical; min-height: 80px; }
@@ -1704,7 +1704,7 @@ img { max-width: 100%; }
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(200, 169, 110, 0.06) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(236, 233, 226, 0.06) 1px, transparent 0);
   background-size: 40px 40px;
   pointer-events: none;
 }
@@ -1720,7 +1720,7 @@ img { max-width: 100%; }
 .login-bg-glow-1 {
   width: 600px;
   height: 600px;
-  background: rgba(200, 169, 110, 0.15);
+  background: rgba(236, 233, 226, 0.08);
   top: -200px;
   left: -100px;
   animation: glowFloat 8s ease-in-out infinite;
@@ -1729,7 +1729,7 @@ img { max-width: 100%; }
 .login-bg-glow-2 {
   width: 500px;
   height: 500px;
-  background: rgba(74, 144, 217, 0.08);
+  background: rgba(200, 195, 188, 0.06);
   bottom: -200px;
   right: -100px;
   animation: glowFloat 10s ease-in-out infinite reverse;
@@ -1748,7 +1748,7 @@ img { max-width: 100%; }
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: 0 40px 80px rgba(0, 0, 0, 0.4),
-              0 0 0 1px rgba(200, 169, 110, 0.1);
+              0 0 0 1px rgba(236, 233, 226, 0.10);
   position: relative;
   z-index: 1;
   margin: var(--space-6);
@@ -1769,7 +1769,7 @@ img { max-width: 100%; }
 /* Brand Panel (Left) */
 .login-brand-panel {
   flex: 1;
-  background: linear-gradient(160deg, #1C1C1E 0%, #141416 50%, #1A1815 100%);
+  background: linear-gradient(160deg, #1A1815 0%, #141210 50%, #1F1C18 100%);
   padding: var(--space-10);
   display: flex;
   flex-direction: column;
@@ -1786,9 +1786,9 @@ img { max-width: 100%; }
   bottom: 0;
   width: 1px;
   background: linear-gradient(to bottom,
-    rgba(200, 169, 110, 0) 0%,
-    rgba(200, 169, 110, 0.2) 50%,
-    rgba(200, 169, 110, 0) 100%
+    rgba(236, 233, 226, 0) 0%,
+    rgba(236, 233, 226, 0.18) 50%,
+    rgba(236, 233, 226, 0) 100%
   );
 }
 
@@ -1809,17 +1809,17 @@ img { max-width: 100%; }
 .login-brand-logo-icon {
   width: 44px;
   height: 44px;
-  background: var(--accent-primary);
+  background: #ECE9E2;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
-  color: white;
+  color: #1A1815;
   font-size: 22px;
   font-weight: 400;
   flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(200, 169, 110, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .login-brand-logo-text {
@@ -2001,7 +2001,7 @@ img { max-width: 100%; }
 
 .login-input:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(200, 169, 110, 0.15);
+  box-shadow: 0 0 0 3px rgba(42, 39, 34, 0.12);
   background: var(--bg-secondary);
 }
 
@@ -2050,7 +2050,7 @@ img { max-width: 100%; }
 .login-submit-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(200, 169, 110, 0.3);
+  box-shadow: 0 4px 16px rgba(42, 39, 34, 0.3);
 }
 
 .login-submit-btn:active:not(:disabled) {

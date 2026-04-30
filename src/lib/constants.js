@@ -44,7 +44,7 @@ export const DOC_TYPES = [
 ]
 
 export const PROJECT_COLORS = [
-  '#C8A96E', '#4A90D9', '#36B2A0', '#8B7EC8',
+  '#2A2722', '#4A90D9', '#36B2A0', '#8B7EC8',
   '#E07B52', '#D95A6A', '#4CAF7D', '#E0A840',
   '#5B8DB8', '#7B68EE',
 ]

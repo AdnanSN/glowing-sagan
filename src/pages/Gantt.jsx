@@ -35,9 +35,9 @@ function dateToX(date, rangeStart, cellW) {
 }
 
 function hexToRgb(hex) {
-  if (!hex) return [200, 169, 110]
+  if (!hex) return [42, 39, 34]
   const m = hex.replace('#','').match(/.{2}/g)
-  return m ? m.map(h => parseInt(h,16)) : [200,169,110]
+  return m ? m.map(h => parseInt(h,16)) : [42, 39, 34]
 }
 
 /* ─────────────────────────── main component ─────────────────────── */
@@ -328,7 +328,7 @@ export function Gantt() {
                       <div key={`${wi}-${di}`} style={{
                         width: cellW, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         borderRight: '1px solid rgba(0,0,0,0.04)',
-                        background: isTD ? 'rgba(200,169,110,0.14)' : isWE ? 'rgba(0,0,0,0.025)' : 'transparent',
+                        background: isTD ? 'rgba(42,39,34,0.10)' : isWE ? 'rgba(0,0,0,0.025)' : 'transparent',
                       }}>
                         <span style={{ fontSize: 9, color: isWE ? 'var(--text-muted)' : 'var(--text-secondary)', fontWeight: 500, textTransform: 'uppercase' }}>{format(day, 'EEE')}</span>
                         <span style={{ fontSize: 11, fontWeight: isTD ? 700 : 400, color: isTD ? 'var(--accent-primary)' : isWE ? 'var(--text-muted)' : 'var(--text-primary)', lineHeight: 1.2 }}>{format(day, 'd')}</span>
@@ -359,8 +359,8 @@ export function Gantt() {
 
               {/* today line */}
               {todayX >= 0 && todayX <= totalW && (
-                <div style={{ position: 'absolute', top: 0, bottom: 0, left: todayX + cellW / 2 - 1, width: 2, background: 'var(--accent-primary)', opacity: 0.85, zIndex: 10, pointerEvents: 'none', boxShadow: '0 0 8px rgba(200,169,110,0.4)' }}>
-                  <div style={{ position: 'absolute', top: -2, left: -4, width: 10, height: 10, borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 0 3px rgba(200,169,110,0.2)' }} />
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: todayX + cellW / 2 - 1, width: 2, background: 'var(--accent-primary)', opacity: 0.85, zIndex: 10, pointerEvents: 'none', boxShadow: '0 0 8px rgba(42,39,34,0.35)' }}>
+                  <div style={{ position: 'absolute', top: -2, left: -4, width: 10, height: 10, borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 0 3px rgba(42,39,34,0.18)' }} />
                 </div>
               )}
 
