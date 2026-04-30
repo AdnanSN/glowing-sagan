@@ -17,24 +17,21 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchUserProfile(session.user)
-      } else {
-        setLoading(false)
-      }
-    })
-
-    // Listen for auth changes
+    // onAuthStateChange fires INITIAL_SESSION immediately on subscribe with
+    // any persisted session, so we don't need a separate getSession() call.
+    //
+    // CRITICAL: this callback must NOT be async / must NOT await any other
+    // supabase client method. Supabase holds an internal auth lock while the
+    // callback runs, and any supabase.from(...) call also tries to take that
+    // lock to attach auth headers — awaiting one here deadlocks the client
+    // and leaves the app stuck on "Loading…" after a refresh. Defer all
+    // supabase work via setTimeout so it runs after the lock is released.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
-          await fetchUserProfile(session.user)
+          setTimeout(() => fetchUserProfile(session.user), 0)
         } else {
           setUserRole(null)
           setUserEmployee(null)
