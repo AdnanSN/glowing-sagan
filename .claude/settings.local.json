@@ -5,7 +5,8 @@
       "Bash(npx --yes esbuild src/pages/Gantt.jsx --bundle=false --loader=jsx --log-level=error)",
       "Bash(npx --yes esbuild src/pages/Gantt.jsx --bundle=false --loader=jsx)",
       "Bash(npx --yes esbuild --loader:.jsx=jsx --bundle=false src/pages/Gantt.jsx)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(git revert *)"
     ]
   }
 }
