@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
@@ -11,6 +11,7 @@ import { RefreshButton } from '../components/RefreshButton'
 import { format, isPast, isToday } from 'date-fns'
 import {
   STAGES, STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
+  PROJECT_TYPES, PROJECT_STATUSES, PROJECT_COLORS,
   getStatusColor
 } from '../lib/constants'
 
@@ -46,6 +47,9 @@ export function ProjectDetail() {
   const [editingDoc, setEditingDoc] = useState(null)
   const [docForm, setDocForm] = useState(EMPTY_DOC)
 
+  const [projectModal, setProjectModal] = useState(false)
+  const [projectForm, setProjectForm] = useState(null)
+
   const [commentText, setCommentText] = useState('')
   const [commentAuthor, setCommentAuthor] = useState('')
   const [saving, setSaving] = useState(false)
@@ -76,6 +80,35 @@ export function ProjectDetail() {
   async function updateStage(stage) {
     await supabase.from('projects').update({ current_stage: stage, updated_at: new Date().toISOString() }).eq('id', id)
     setProject(p => ({ ...p, current_stage: stage }))
+  }
+
+  // === PROJECT EDIT ===
+  function openEditProject() {
+    setProjectForm({ ...project, budget: project.budget ?? '' })
+    setProjectModal(true)
+  }
+  function closeProjectModal() { setProjectModal(false); setProjectForm(null) }
+
+  async function saveProject() {
+    setSaving(true)
+    const payload = {
+      name: projectForm.name,
+      client: projectForm.client,
+      project_type: projectForm.project_type,
+      status: projectForm.status,
+      current_stage: projectForm.current_stage,
+      color: projectForm.color,
+      budget: projectForm.budget !== '' && projectForm.budget != null ? parseFloat(projectForm.budget) : null,
+      start_date: projectForm.start_date || null,
+      end_date: projectForm.end_date || null,
+      description: projectForm.description || '',
+      location: projectForm.location || '',
+      updated_at: new Date().toISOString(),
+    }
+    await supabase.from('projects').update(payload).eq('id', id)
+    setSaving(false)
+    closeProjectModal()
+    fetchAll()
   }
 
   // === TASKS ===
@@ -209,6 +242,14 @@ export function ProjectDetail() {
       </button>
     </>
   )
+  const projectModalFooter = projectForm && (
+    <>
+      <button className="btn btn-secondary" onClick={closeProjectModal}>Cancel</button>
+      <button className="btn btn-primary" onClick={saveProject} disabled={!projectForm.name || !projectForm.client || saving}>
+        {saving ? 'Saving…' : 'Save Changes'}
+      </button>
+    </>
+  )
 
   return (
     <>
@@ -229,7 +270,7 @@ export function ProjectDetail() {
         <div className="page-header-actions">
           <RefreshButton onRefresh={fetchAll} />
           {canManage && (
-            <Link to={`/projects`} state={{ edit: project.id }} className="btn btn-secondary btn-sm"><Pencil size={13} /> Edit Project</Link>
+            <button className="btn btn-secondary btn-sm" onClick={openEditProject}><Pencil size={13} /> Edit Project</button>
           )}
         </div>
       </div>
@@ -613,6 +654,87 @@ export function ProjectDetail() {
           <textarea className="form-textarea" value={docForm.notes}
             onChange={e => setDocForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 60 }} />
         </div>
+      </Modal>
+
+      {/* Project Edit Modal */}
+      <Modal isOpen={projectModal} onClose={closeProjectModal} title="Edit Project" size="lg" footer={projectModalFooter}>
+        {projectForm && (
+          <>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Project Name *</label>
+                <input className="form-input" value={projectForm.name}
+                  onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Client Name *</label>
+                <input className="form-input" value={projectForm.client}
+                  onChange={e => setProjectForm(f => ({ ...f, client: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Project Type</label>
+                <select className="form-select" value={projectForm.project_type}
+                  onChange={e => setProjectForm(f => ({ ...f, project_type: e.target.value }))}>
+                  {PROJECT_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="form-select" value={projectForm.status}
+                  onChange={e => setProjectForm(f => ({ ...f, status: e.target.value }))}>
+                  {PROJECT_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Current Stage</label>
+                <select className="form-select" value={projectForm.current_stage}
+                  onChange={e => setProjectForm(f => ({ ...f, current_stage: e.target.value }))}>
+                  {STAGES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Budget ($)</label>
+                <input className="form-input" type="number" value={projectForm.budget}
+                  onChange={e => setProjectForm(f => ({ ...f, budget: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Start Date</label>
+                <input className="form-input" type="date" value={projectForm.start_date || ''}
+                  onChange={e => setProjectForm(f => ({ ...f, start_date: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">End Date</label>
+                <input className="form-input" type="date" value={projectForm.end_date || ''}
+                  onChange={e => setProjectForm(f => ({ ...f, end_date: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Location</label>
+              <input className="form-input" value={projectForm.location || ''}
+                onChange={e => setProjectForm(f => ({ ...f, location: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea className="form-textarea" value={projectForm.description || ''}
+                onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Project Color</label>
+              <div className="color-swatch">
+                {PROJECT_COLORS.map(c => (
+                  <div key={c} className={`color-option${projectForm.color === c ? ' selected' : ''}`}
+                    style={{ background: c }} onClick={() => setProjectForm(f => ({ ...f, color: c }))} />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </Modal>
     </>
   )

@@ -181,6 +181,22 @@ img { max-width: 100%; }
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
+.sidebar-logo-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.mobile-logo-img {
+  display: block;
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+}
+
 .sidebar-logo-mark {
   display: flex;
   align-items: center;
@@ -1804,6 +1820,23 @@ img { max-width: 100%; }
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-10);
+}
+
+.login-brand-logo-img {
+  display: block;
+  height: 80px;
+  width: auto;
+  max-width: 280px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.login-mobile-logo-img {
+  display: block;
+  height: 36px;
+  width: auto;
+  object-fit: contain;
 }
 
 .login-brand-logo-icon {

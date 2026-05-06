@@ -36,11 +36,7 @@ export function Login() {
         <div className="login-brand-panel">
           <div className="login-brand-content">
             <div className="login-brand-logo">
-              <div className="login-brand-logo-icon">N</div>
-              <div className="login-brand-logo-text">
-                <span className="login-brand-name">NHN</span>
-                <span className="login-brand-sub">Architects</span>
-              </div>
+              <img src="/NHN logo.jpeg" alt="NHN Architects" className="login-brand-logo-img" />
             </div>
             <h1 className="login-brand-headline">
               Architecture<br />
@@ -74,8 +70,7 @@ export function Login() {
         <div className="login-form-panel">
           <div className="login-form-wrapper">
             <div className="login-mobile-logo">
-              <div className="login-brand-logo-icon">N</div>
-              <span style={{ fontWeight: 700, fontSize: 18 }}>NHN Architects</span>
+              <img src="/NHN logo no BG.png" alt="NHN Architects" className="login-mobile-logo-img" />
             </div>
 
             <div className="login-form-header">

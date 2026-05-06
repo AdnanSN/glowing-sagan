@@ -77,13 +77,7 @@ export function Layout({ children }) {
       {/* Sidebar */}
       <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">
-          <div className="sidebar-logo-mark">
-            <div className="sidebar-logo-icon">N</div>
-            <div className="sidebar-logo-text">
-              <span className="sidebar-logo-name">NHN</span>
-              <span className="sidebar-logo-sub">Architects</span>
-            </div>
-          </div>
+          <img src="/NHN logo.jpeg" alt="NHN Architects" className="sidebar-logo-img" />
         </div>
 
         <nav className="sidebar-nav">
@@ -133,10 +127,7 @@ export function Layout({ children }) {
           <button className="mobile-menu-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle menu">
             <Menu size={20} />
           </button>
-          <div className="sidebar-logo-mark" style={{ gap: 10 }}>
-            <div className="sidebar-logo-icon" style={{ width: 30, height: 30, fontSize: 15 }}>N</div>
-            <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>NHN PM</span>
-          </div>
+          <img src="/NHN logo no BG.png" alt="NHN Architects" className="mobile-logo-img" />
           <div style={{ width: 36 }} /> {/* spacer to center logo */}
         </div>
 
