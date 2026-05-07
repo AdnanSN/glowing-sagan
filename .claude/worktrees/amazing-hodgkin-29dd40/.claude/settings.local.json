@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git worktree *)",
-      "Bash(git branch *)"
-    ]
-  }
-}
