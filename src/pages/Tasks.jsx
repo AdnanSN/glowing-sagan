@@ -62,19 +62,24 @@ export function Tasks() {
   async function handleSave() {
     setSaving(true)
     const payload = {
-      ...form,
+      title: form.title,
+      description: form.description,
+      status: form.status,
+      priority: form.priority,
       project_id: form.project_id || null,
       assignee_id: form.assignee_id || null,
       due_date: form.due_date || null,
       stage: form.stage || null,
       updated_at: new Date().toISOString(),
     }
-    if (editing) {
-      await supabase.from('tasks').update(payload).eq('id', editing.id)
-    } else {
-      await supabase.from('tasks').insert(payload)
-    }
+    const { error } = editing
+      ? await supabase.from('tasks').update(payload).eq('id', editing.id)
+      : await supabase.from('tasks').insert(payload)
     setSaving(false)
+    if (error) {
+      alert(`Could not save task: ${error.message}`)
+      return
+    }
     closeModal()
     fetchAll()
   }
