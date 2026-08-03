@@ -2,34 +2,28 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FolderKanban, CheckSquare, Users,
-  CalendarDays, FileText, Menu, X, GanttChart, LogOut, Shield
+  CalendarDays, FileText, Menu, X, GanttChart, LogOut, Shield, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
+import { roleMeta } from '../lib/constants'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/gantt', icon: GanttChart, label: 'Gantt Chart' },
-  { to: '/team', icon: Users, label: 'Team', roles: ['admin'] },
+  { to: '/team', icon: Users, label: 'Team', requires: 'manage_team' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { to: '/documents', icon: FileText, label: 'Documents' },
+  { to: '/access', icon: ShieldCheck, label: 'Access', requires: 'manage_access', badge: 'pending' },
 ]
-
-const ROLE_LABELS = {
-  admin: 'Principal Architect',
-  member: 'Senior Architect',
-}
-
-const ROLE_COLORS = {
-  admin: '#E05252',
-  member: '#4A90D9',
-}
 
 export function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
   const location = useLocation()
-  const { user, userRole, userEmployee, signOut } = useAuth()
+  const { user, userRole, userEmployee, signOut, hasPermission } = useAuth()
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -53,19 +47,31 @@ export function Layout({ children }) {
     return () => { document.body.style.overflow = '' }
   }, [sidebarOpen])
 
+  // Keep the badge on the Access link current so owners notice a new
+  // sign-up without having to open the page.
+  const canManageAccess = hasPermission('manage_access')
+  useEffect(() => {
+    if (!canManageAccess) return
+    let cancelled = false
+    supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .then(({ count }) => { if (!cancelled) setPendingCount(count || 0) })
+    return () => { cancelled = true }
+  }, [canManageAccess, location.pathname])
+
   async function handleSignOut() {
     await signOut()
   }
 
-  // Filter nav items based on user role
-  const visibleNavItems = navItems.filter(item => {
-    if (!item.roles) return true
-    return item.roles.includes(userRole)
-  })
+  // Filter nav items based on what this user may actually do
+  const visibleNavItems = navItems.filter(item => !item.requires || hasPermission(item.requires))
 
   const displayName = userEmployee?.name || user?.email?.split('@')[0] || 'User'
   const displayInitial = displayName.charAt(0).toUpperCase()
-  const avatarColor = userEmployee?.color || '#2A2722'
+  const avatarColor = userEmployee?.color || '#1A1A1A'
+  const role = roleMeta(userRole)
 
   return (
     <div className="app-shell">
@@ -77,12 +83,12 @@ export function Layout({ children }) {
       {/* Sidebar */}
       <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">
-          <img src="/NHN logo.jpeg" alt="NHN Architects" className="sidebar-logo-img" />
+          <img src="/NHN_LOGO.svg" alt="NHN Architects" className="sidebar-logo-img" />
         </div>
 
         <nav className="sidebar-nav">
           <div className="sidebar-section-label">Main</div>
-          {visibleNavItems.map(({ to, icon: Icon, label }) => (
+          {visibleNavItems.map(({ to, icon: Icon, label, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -91,6 +97,9 @@ export function Layout({ children }) {
             >
               <Icon />
               {label}
+              {badge === 'pending' && pendingCount > 0 && (
+                <span className="nav-item-badge">{pendingCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -103,9 +112,9 @@ export function Layout({ children }) {
             </div>
             <div className="sidebar-user-details">
               <div className="sidebar-user-name">{displayName}</div>
-              <div className="sidebar-user-role" style={{ color: ROLE_COLORS[userRole] || '#8A8A88' }}>
+              <div className="sidebar-user-role" style={{ color: role.color }}>
                 <Shield size={10} />
-                {ROLE_LABELS[userRole] || 'User'}
+                {role.label}
               </div>
             </div>
           </div>
@@ -127,8 +136,8 @@ export function Layout({ children }) {
           <button className="mobile-menu-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle menu">
             <Menu size={20} />
           </button>
-          <img src="/NHN logo no BG.png" alt="NHN Architects" className="mobile-logo-img" />
-          <div style={{ width: 36 }} /> {/* spacer to center logo */}
+          <img src="/NHN_LOGO.svg" alt="NHN Architects" className="mobile-logo-img" />
+          <div style={{ width: 40 }} /> {/* spacer to center logo */}
         </div>
 
         {children}

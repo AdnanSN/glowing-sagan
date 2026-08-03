@@ -97,7 +97,7 @@ export function Dashboard() {
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon" style={{ background: '#F0EBF8', color: '#8B5CF6' }}>
+            <div className="stat-icon" style={{ background: '#EFEDF6', color: '#6B5CA5' }}>
               <Users />
             </div>
             <div className="stat-content">
@@ -204,7 +204,7 @@ export function Dashboard() {
                       const isOverdue = m.due_date && isPast(new Date(m.due_date)) && !isToday(new Date(m.due_date))
                       return (
                         <div key={m.id} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: isOverdue ? 'var(--danger)' : 'var(--accent-primary)', marginTop: 5, flexShrink: 0 }} />
+                          <div style={{ width: 8, height: 8, background: isOverdue ? 'var(--danger)' : 'var(--accent-primary)', marginTop: 5, flexShrink: 0 }} />
                           <div>
                             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{m.title}</div>
                             <div style={{ fontSize: 'var(--text-xs)', color: isOverdue ? 'var(--danger)' : 'var(--text-secondary)' }}>

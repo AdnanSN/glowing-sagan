@@ -1,9 +1,18 @@
 -- ============================================================
 -- NHN Architects — Supabase Schema (fresh install)
--- For an existing project, run migration_v2_auth.sql instead.
+--
+-- For an EXISTING project, do not run this. Run the migrations in
+-- order instead: migration_v2_auth.sql then migration_v3_self_signup.sql.
+--
+-- Access model (see migration_v3_self_signup.sql for the full notes):
+--   Employees sign themselves up. Every new account lands as
+--   role='viewer', status='pending' and can read nothing until an
+--   admin approves it from the in-app Access page.
+--   Roles: admin (100) > manager (70) > member (40) > viewer (10).
+--   The first account created on a fresh install becomes the admin.
 -- ============================================================
 
--- EMPLOYEES (single source of truth for team members)
+-- EMPLOYEES (the team roster — a person on the org chart)
 create table if not exists employees (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -79,73 +88,335 @@ create table if not exists comments (
   created_at timestamptz default now()
 );
 
+-- PROFILES (one row per login — who they are and what they may do)
+create table if not exists profiles (
+  id           uuid primary key references auth.users(id) on delete cascade,
+  email        text,
+  full_name    text,
+  role         text        not null default 'viewer'
+                 check (role in ('admin', 'manager', 'member', 'viewer')),
+  status       text        not null default 'pending'
+                 check (status in ('pending', 'approved', 'suspended', 'rejected')),
+  employee_id  uuid        references employees(id) on delete set null,
+  requested_at timestamptz not null default now(),
+  approved_at  timestamptz,
+  approved_by  uuid        references auth.users(id) on delete set null,
+  updated_at   timestamptz not null default now()
+);
+
+create index if not exists profiles_status_idx   on profiles (status);
+create index if not exists profiles_employee_idx on profiles (employee_id);
+create unique index if not exists profiles_employee_unique
+  on profiles (employee_id) where employee_id is not null;
+
 
 -- ============================================================
--- AUTHORIZATION
--- Roles live in auth.users.raw_app_meta_data.role ('admin' | 'member').
--- Only the service role / dashboard can write app_metadata, so users
--- cannot escalate themselves. All RLS policies read role from the JWT.
+-- AUTHORIZATION HELPERS
+-- SECURITY DEFINER so they can read `profiles` without tripping
+-- the very policies that are written in terms of them.
 -- ============================================================
 
+create or replace function public.role_rank(r text)
+returns int language sql immutable as $$
+  select case r
+    when 'admin'   then 100
+    when 'manager' then 70
+    when 'member'  then 40
+    when 'viewer'  then 10
+    else 0
+  end;
+$$;
+
+-- 'none' for anyone not approved → every policy fails closed.
 create or replace function public.current_user_role()
-returns text
-language sql
-stable
-as $$
-  select coalesce(auth.jwt() -> 'app_metadata' ->> 'role', 'member');
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select p.role from public.profiles p
+      where p.id = auth.uid() and p.status = 'approved'),
+    'none'
+  );
+$$;
+
+create or replace function public.has_min_role(min_role text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.role_rank(public.current_user_role()) >= public.role_rank(min_role);
+$$;
+
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.current_user_role() = 'admin';
+$$;
+
+create or replace function public.is_approved()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.role_rank(public.current_user_role()) > 0;
 $$;
 
 
--- ENABLE RLS
+-- ============================================================
+-- SIGN-UP → PROFILE
+-- ============================================================
+
+create or replace function public.create_profile_for(
+  p_user_id uuid, p_email text, p_full_name text
+)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_bootstrap boolean;
+begin
+  -- First account on a fresh install becomes the owner, otherwise
+  -- nobody could ever approve anyone.
+  select not exists (
+    select 1 from public.profiles where role = 'admin' and status = 'approved'
+  ) into v_bootstrap;
+
+  insert into public.profiles (id, email, full_name, role, status, approved_at)
+  values (
+    p_user_id,
+    p_email,
+    nullif(btrim(coalesce(p_full_name, '')), ''),
+    case when v_bootstrap then 'admin'    else 'viewer'  end,
+    case when v_bootstrap then 'approved' else 'pending' end,
+    case when v_bootstrap then now() end
+  )
+  on conflict (id) do nothing;
+end$$;
+
+revoke all on function public.create_profile_for(uuid, text, text)
+  from public, anon, authenticated;
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.create_profile_for(
+    new.id, new.email, new.raw_user_meta_data ->> 'full_name');
+  return new;
+end$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+create or replace function public.handle_user_email_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- Transaction-local flag so guard_profile_changes() lets this one
+  -- write through — the user themselves is not an admin.
+  perform set_config('app.syncing_email', 'on', true);
+  update public.profiles set email = new.email where id = new.id;
+  perform set_config('app.syncing_email', 'off', true);
+  return new;
+end$$;
+
+drop trigger if exists on_auth_user_email_changed on auth.users;
+create trigger on_auth_user_email_changed
+  after update of email on auth.users
+  for each row when (new.email is distinct from old.email)
+  execute function public.handle_user_email_change();
+
+-- Safety net the app calls if a signed-in user has no profile row.
+create or replace function public.ensure_profile()
+returns public.profiles language plpgsql security definer set search_path = public as $$
+declare
+  v_email text; v_full_name text; v_profile public.profiles;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select u.email, u.raw_user_meta_data ->> 'full_name'
+    into v_email, v_full_name
+    from auth.users u where u.id = auth.uid();
+
+  perform public.create_profile_for(auth.uid(), v_email, v_full_name);
+
+  select * into v_profile from public.profiles where id = auth.uid();
+  return v_profile;
+end$$;
+
+grant execute on function public.ensure_profile() to authenticated;
+
+
+-- ============================================================
+-- GUARDS — nobody escalates themselves, the last admin can't be
+-- locked out.
+-- ============================================================
+
+create or replace function public.guard_profile_changes()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_admin_count int;
+begin
+  if public.is_admin() then
+    if old.role = 'admin' and old.status = 'approved'
+       and (new.role <> 'admin' or new.status <> 'approved') then
+      select count(*) into v_admin_count
+        from public.profiles where role = 'admin' and status = 'approved';
+      if v_admin_count <= 1 then
+        raise exception 'Cannot demote or suspend the last remaining admin';
+      end if;
+    end if;
+    return new;
+  end if;
+
+  -- Everyone else may change their display name and nothing else.
+  if new.role         is distinct from old.role
+  or new.status       is distinct from old.status
+  or new.employee_id  is distinct from old.employee_id
+  or new.approved_by  is distinct from old.approved_by
+  or new.approved_at  is distinct from old.approved_at
+  or new.requested_at is distinct from old.requested_at
+  or (new.email is distinct from old.email
+      and coalesce(current_setting('app.syncing_email', true), 'off') <> 'on') then
+    raise exception 'Only an administrator can change role, status or employee link';
+  end if;
+
+  return new;
+end$$;
+
+drop trigger if exists profiles_guard_changes on profiles;
+create trigger profiles_guard_changes before update on profiles
+  for each row execute function public.guard_profile_changes();
+
+create or replace function public.touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end$$;
+
+drop trigger if exists profiles_touch_updated_at on profiles;
+create trigger profiles_touch_updated_at before update on profiles
+  for each row execute function public.touch_updated_at();
+
+-- Mirror profiles.employee_id into employees.auth_user_id.
+create or replace function public.sync_employee_link()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_old_employee uuid := null;
+begin
+  if tg_op = 'UPDATE' then
+    v_old_employee := old.employee_id;
+    if v_old_employee is not distinct from new.employee_id then
+      return new;
+    end if;
+  end if;
+
+  if v_old_employee is not null then
+    update public.employees set auth_user_id = null
+     where id = v_old_employee and auth_user_id = new.id;
+  end if;
+
+  if new.employee_id is not null then
+    update public.employees set auth_user_id = null
+     where auth_user_id = new.id and id <> new.employee_id;
+    update public.employees set auth_user_id = new.id
+     where id = new.employee_id;
+  end if;
+
+  return new;
+end$$;
+
+drop trigger if exists profiles_sync_employee on profiles;
+create trigger profiles_sync_employee after insert or update on profiles
+  for each row execute function public.sync_employee_link();
+
+-- Deleting from auth.users needs elevated rights; re-checks the caller.
+create or replace function public.admin_delete_user(target uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only an administrator can remove users';
+  end if;
+  if target = auth.uid() then
+    raise exception 'You cannot delete your own account';
+  end if;
+  if exists (select 1 from public.profiles
+              where id = target and role = 'admin' and status = 'approved')
+     and (select count(*) from public.profiles
+           where role = 'admin' and status = 'approved') <= 1 then
+    raise exception 'Cannot delete the last remaining admin';
+  end if;
+
+  delete from auth.users where id = target;
+end$$;
+
+revoke all on function public.admin_delete_user(uuid) from public, anon;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+
+
+-- ============================================================
+-- ROW LEVEL SECURITY
+-- READ requires an approved account. WRITE follows the ladder.
+-- ============================================================
+
 alter table employees  enable row level security;
 alter table projects   enable row level security;
 alter table tasks      enable row level security;
 alter table milestones enable row level security;
 alter table documents  enable row level security;
 alter table comments   enable row level security;
+alter table profiles   enable row level security;
 
+-- PROFILES — no INSERT policy on purpose: rows only ever come from
+-- the definer-owned sign-up trigger / ensure_profile().
+create policy "read profiles" on profiles for select to authenticated
+using (
+  id = auth.uid()
+  or public.is_admin()
+  or (public.is_approved() and status = 'approved')
+);
+create policy "update own profile" on profiles for update to authenticated
+  using (id = auth.uid()) with check (id = auth.uid());
+create policy "admin update profiles" on profiles for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+create policy "admin delete profiles" on profiles for delete to authenticated
+  using (public.is_admin());
 
--- READ: any authenticated user.   WRITE: admins only.
+-- EMPLOYEES — admin-managed roster
+create policy "read employees" on employees for select to authenticated
+  using (public.is_approved());
+create policy "admin write employees" on employees for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
 
--- EMPLOYEES
-create policy "read employees"        on employees for select to authenticated using (true);
-create policy "admin write employees" on employees for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+-- PROJECTS — manager and above
+create policy "read projects" on projects for select to authenticated
+  using (public.is_approved());
+create policy "manager write projects" on projects for all to authenticated
+  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
 
--- PROJECTS
-create policy "read projects"         on projects for select to authenticated using (true);
-create policy "admin write projects"  on projects for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+-- MILESTONES — manager and above
+create policy "read milestones" on milestones for select to authenticated
+  using (public.is_approved());
+create policy "manager write milestones" on milestones for all to authenticated
+  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
 
--- TASKS
-create policy "read tasks"            on tasks for select to authenticated using (true);
-create policy "admin write tasks"     on tasks for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+-- TASKS — member and above
+create policy "read tasks" on tasks for select to authenticated
+  using (public.is_approved());
+create policy "member write tasks" on tasks for all to authenticated
+  using (public.has_min_role('member')) with check (public.has_min_role('member'));
 
--- MILESTONES
-create policy "read milestones"        on milestones for select to authenticated using (true);
-create policy "admin write milestones" on milestones for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+-- DOCUMENTS — member and above
+create policy "read documents" on documents for select to authenticated
+  using (public.is_approved());
+create policy "member write documents" on documents for all to authenticated
+  using (public.has_min_role('member')) with check (public.has_min_role('member'));
 
--- DOCUMENTS
-create policy "read documents"        on documents for select to authenticated using (true);
-create policy "admin write documents" on documents for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
-
--- COMMENTS — anyone authenticated can post, only admins can edit/delete
-create policy "read comments"         on comments for select to authenticated using (true);
-create policy "auth insert comments"  on comments for insert to authenticated with check (true);
-create policy "admin manage comments" on comments for all    to authenticated
-  using (public.current_user_role() = 'admin')
-  with check (public.current_user_role() = 'admin');
+-- COMMENTS — members post, admins moderate
+create policy "read comments" on comments for select to authenticated
+  using (public.is_approved());
+create policy "member insert comments" on comments for insert to authenticated
+  with check (public.has_min_role('member'));
+create policy "admin manage comments" on comments for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
 
 
 -- ============================================================
--- INITIAL ACCOUNTS — see migration_v2_auth.sql sections 6 & 7
--- for the dashboard-add steps and the role-assignment SQL.
+-- FIRST RUN
+-- Open the app, click "Request access" and register. Because no
+-- admin exists yet, that first account is created as an approved
+-- admin. Everyone after them lands in the pending queue on the
+-- Access page.
 -- ============================================================

@@ -37,10 +37,10 @@ export function Calendar() {
     const dayStr = format(day, 'yyyy-MM-dd')
     const events = []
     milestones.filter(m => m.due_date === dayStr).forEach(m =>
-      events.push({ label: `🏁 ${m.title}`, color: m.project?.color || '#2A2722', type: 'milestone' })
+      events.push({ label: `🏁 ${m.title}`, color: m.project?.color || '#1A1A1A', type: 'milestone' })
     )
     tasks.filter(t => t.due_date === dayStr).forEach(t =>
-      events.push({ label: t.title, color: t.project?.color || '#4A90D9', type: 'task' })
+      events.push({ label: t.title, color: t.project?.color || '#0041C2', type: 'task' })
     )
     return events
   }
@@ -104,7 +104,7 @@ export function Calendar() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                       {upcoming.map(m => (
                         <div key={m.id} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: m.project?.color || 'var(--accent-primary)', flexShrink: 0 }} />
+                          <div style={{ width: 8, height: 8, background: m.project?.color || 'var(--accent-primary)', flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{m.title}</div>
                             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
@@ -126,7 +126,7 @@ export function Calendar() {
                   ) : (
                     projects.filter(p => p.end_date).slice(0, 6).map(p => (
                       <div key={p.id} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
-                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                        <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{p.name}</div>
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{format(new Date(p.end_date), 'd MMM yyyy')}</div>

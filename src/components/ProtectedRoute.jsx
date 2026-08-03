@@ -1,15 +1,16 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import { roleRank, ROLE_PERMISSIONS } from '../lib/constants'
 
 /**
  * Wraps routes that require authentication.
- * Optionally checks for specific roles.
  * @param {object} props
  * @param {React.ReactNode} props.children
- * @param {string[]} [props.allowedRoles] - Optional array of roles that can access this route
+ * @param {string[]} [props.allowedRoles] - Only these roles may enter
+ * @param {string} [props.requires] - A key of ROLE_PERMISSIONS the user must hold
  */
-export function ProtectedRoute({ children, allowedRoles }) {
-  const { isAuthenticated, loading, userRole } = useAuth()
+export function ProtectedRoute({ children, allowedRoles, requires }) {
+  const { isAuthenticated, isApproved, loading, userRole } = useAuth()
 
   if (loading) {
     return (
@@ -24,7 +25,16 @@ export function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" replace />
   }
 
-  if (allowedRoles && !allowedRoles.includes(userRole)) {
+  // Unapproved accounts never reach a real route — App renders the
+  // approval gate for them — but fail closed here too.
+  if (!isApproved) {
+    return <Navigate to="/" replace />
+  }
+
+  const roleAllowed = !allowedRoles || allowedRoles.includes(userRole)
+  const permissionAllowed = !requires || roleRank(userRole) >= (ROLE_PERMISSIONS[requires] ?? Infinity)
+
+  if (!roleAllowed || !permissionAllowed) {
     return (
       <div className="auth-forbidden">
         <div className="auth-forbidden-icon">🔒</div>

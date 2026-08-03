@@ -259,7 +259,7 @@ export function ProjectDetail() {
             <button className="icon-btn" onClick={() => navigate('/projects')} style={{ marginRight: 'var(--space-1)' }}><ArrowLeft size={15} /></button>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color }} />
+                <div style={{ width: 10, height: 10, background: project.color }} />
                 <span className="page-header-title">{project.name}</span>
                 <span className={`badge ${getStatusColor(project.status)}`}>{project.status}</span>
               </div>
@@ -390,7 +390,7 @@ export function ProjectDetail() {
                           <div key={task.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', transition: 'var(--transition)' }}>
                             <div
                               onClick={() => canManage && toggleTaskDone(task)}
-                              style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${task.status === 'Done' ? 'var(--success)' : 'var(--border-medium)'}`, background: task.status === 'Done' ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canManage ? 'pointer' : 'default', flexShrink: 0, color: 'white', transition: 'var(--transition)' }}
+                              style={{ width: 20, height: 20, border: `2px solid ${task.status === 'Done' ? 'var(--success)' : 'var(--border-medium)'}`, background: task.status === 'Done' ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canManage ? 'pointer' : 'default', flexShrink: 0, color: 'white', transition: 'var(--transition)' }}
                             >
                               {task.status === 'Done' && <Check size={11} />}
                             </div>
@@ -399,7 +399,7 @@ export function ProjectDetail() {
                               {task.description && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 2 }}>{task.description}</div>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: task.priority === 'High' ? 'var(--danger)' : task.priority === 'Medium' ? 'var(--warning)' : 'var(--success)' }} title={task.priority} />
+                              <div style={{ width: 8, height: 8, background: task.priority === 'High' ? 'var(--danger)' : task.priority === 'Medium' ? 'var(--warning)' : 'var(--success)' }} title={task.priority} />
                               {task.due_date && (
                                 <span style={{ fontSize: 'var(--text-xs)', color: isOverdue ? 'var(--danger)' : 'var(--text-muted)', fontWeight: isOverdue ? 600 : 400 }}>
                                   {format(new Date(task.due_date), 'd MMM')}

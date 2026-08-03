@@ -55,7 +55,23 @@ function makeFrom() {
   }
 }
 
-const stub = { from: () => makeFrom() }
+// Without credentials every call resolves to a clear error instead of
+// throwing on `supabase.auth` being undefined — the setup banner explains why.
+const notConfigured = () =>
+  Promise.resolve({ data: null, error: { message: 'Supabase is not configured.' } })
+
+const stub = {
+  from: () => makeFrom(),
+  rpc: () => notConfigured(),
+  auth: {
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+    signInWithPassword: notConfigured,
+    signUp: notConfigured,
+    signOut: () => Promise.resolve({ error: null }),
+    updateUser: notConfigured,
+    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+  },
+}
 
 export const supabase = isConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)

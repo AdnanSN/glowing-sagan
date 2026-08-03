@@ -16,10 +16,10 @@ const ASSIGNEE_COL_W = 150
 const HEADER_H       = 72
 
 const STATUS_COLORS = {
-  'To Do':       '#9E9E9E',
-  'In Progress': '#4A90D9',
-  'In Review':   '#8B7EC8',
-  'Done':        '#4CAF7D',
+  'To Do':       '#9CA3AF',
+  'In Progress': '#0041C2',
+  'In Review':   '#6B5CA5',
+  'Done':        '#0F7B55',
 }
 const STATUS_PROGRESS = { 'To Do': 0, 'In Progress': 0.5, 'In Review': 0.85, 'Done': 1 }
 
@@ -359,8 +359,8 @@ export function Gantt() {
 
               {/* today line */}
               {todayX >= 0 && todayX <= totalW && (
-                <div style={{ position: 'absolute', top: 0, bottom: 0, left: todayX + cellW / 2 - 1, width: 2, background: 'var(--accent-primary)', opacity: 0.85, zIndex: 10, pointerEvents: 'none', boxShadow: '0 0 8px rgba(42,39,34,0.35)' }}>
-                  <div style={{ position: 'absolute', top: -2, left: -4, width: 10, height: 10, borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 0 3px rgba(42,39,34,0.18)' }} />
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: todayX + cellW / 2 - 1, width: 2, background: 'var(--accent-primary)', zIndex: 10, pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: 'var(--accent-primary)' }} />
                 </div>
               )}
 
@@ -381,8 +381,8 @@ export function Gantt() {
                         const x2 = clamp(dateToX(addDays(e, 1), rangeStart, cellW), 0, totalW)
                         const bw = Math.max(x2 - x1, 4)
                         return (
-                          <div style={{ position: 'absolute', left: x1, width: bw, top: 18, height: 20, borderRadius: 5,
-                            background: `linear-gradient(180deg, rgba(${rgb.join(',')},0.22), rgba(${rgb.join(',')},0.14))`,
+                          <div style={{ position: 'absolute', left: x1, width: bw, top: 18, height: 20,
+                            background: `rgba(${rgb.join(',')},0.16)`,
                             border: `1px solid rgba(${rgb.join(',')},0.45)`, pointerEvents: 'none' }} />
                         )
                       })()}
@@ -401,8 +401,7 @@ export function Gantt() {
                       <div title={`${ms.title} · ${format(d, 'd MMM yyyy')}`} style={{
                         position: 'absolute', left: x - 9, top: ROW_H / 2 - 9, width: 18, height: 18,
                         background: c, transform: 'rotate(45deg)', zIndex: 5,
-                        boxShadow: `0 2px 6px rgba(0,0,0,0.15), 0 0 0 3px rgba(255,255,255,0.9), 0 0 0 4px ${c}40`,
-                        borderRadius: 3,
+                        boxShadow: '0 0 0 3px #fff',
                       }} />
                     </div>
                   )
@@ -412,7 +411,7 @@ export function Gantt() {
                 const task = row.task
                 const geo  = getBarGeometry(task)
                 const rgb  = hexToRgb(row.project.color)
-                const statusC = STATUS_COLORS[task.status] || '#9E9E9E'
+                const statusC = STATUS_COLORS[task.status] || '#9CA3AF'
                 const isDone = task.status === 'Done'
                 const isDragging = dragRef.current && dragRef.current.taskId === task.id
                 const progress = STATUS_PROGRESS[task.status] ?? 0
@@ -452,9 +451,8 @@ export function Gantt() {
         <div style={{
           position: 'fixed', left: dragTip.x + 14, top: dragTip.y + 14,
           background: 'var(--text-primary)', color: 'white',
-          padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+          padding: '6px 10px', fontSize: 11, fontWeight: 500, letterSpacing: '0.04em',
           pointerEvents: 'none', zIndex: 1000, whiteSpace: 'nowrap',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
         }}>{dragTip.text}</div>
       )}
 
@@ -542,7 +540,6 @@ function TaskBar({ task, geo, rgb, statusC, isDone, isDragging, progress, rowH, 
       style={{
         position: 'absolute', left: geo.x, width: geo.width,
         top: 11, height: barH,
-        borderRadius: 7,
         background: fillBg,
         border: `1px solid ${borderC}`,
         cursor: isDragging ? 'grabbing' : 'grab',
@@ -551,12 +548,11 @@ function TaskBar({ task, geo, rgb, statusC, isDone, isDragging, progress, rowH, 
         overflow: 'hidden',
         zIndex: isDragging ? 8 : (hover ? 7 : 5),
         boxShadow: isDragging
-          ? `0 6px 16px rgba(0,0,0,0.18), 0 0 0 2px ${baseRgba(0.4)}`
+          ? `0 0 0 2px var(--text-primary)`
           : hover
-            ? `0 3px 10px rgba(0,0,0,0.12)`
-            : `0 1px 2px rgba(0,0,0,0.06)`,
-        transform: hover && !isDragging ? 'translateY(-1px)' : 'none',
-        transition: isDragging ? 'none' : 'box-shadow 0.15s, transform 0.15s',
+            ? `0 0 0 1px var(--text-primary)`
+            : 'none',
+        transition: isDragging ? 'none' : 'box-shadow 0.15s',
       }}
     >
       {/* progress fill */}
@@ -572,7 +568,7 @@ function TaskBar({ task, geo, rgb, statusC, isDone, isDragging, progress, rowH, 
       {/* status stripe (left) */}
       <div style={{
         position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
-        background: statusC, borderTopLeftRadius: 7, borderBottomLeftRadius: 7,
+        background: statusC,
         pointerEvents: 'none',
       }} />
 
@@ -601,11 +597,11 @@ function TaskBar({ task, geo, rgb, statusC, isDone, isDragging, progress, rowH, 
       {/* assignee dot */}
       {showAssignee && (
         <div style={{
-          width: 20, height: 20, borderRadius: '50%',
+          width: 20, height: 20,
           background: task.assignee.color,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0, marginRight: 6,
-          boxShadow: '0 0 0 2px rgba(255,255,255,0.95)',
+          fontSize: 9, fontWeight: 600, color: 'white', flexShrink: 0, marginRight: 6,
+          boxShadow: '0 0 0 2px #fff',
           position: 'relative', zIndex: 1,
         }} title={task.assignee.name}>
           {task.assignee.name.charAt(0)}
@@ -630,7 +626,7 @@ function GanttLabelRow({ row, onEdit }) {
     return (
       <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
         <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', flexShrink: 0 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+          <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
           <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
         </div>
         <div style={{ width: ASSIGNEE_COL_W, flexShrink: 0, borderLeft: '1px solid var(--border-light)' }} />
@@ -643,7 +639,7 @@ function GanttLabelRow({ row, onEdit }) {
     return (
       <div style={{ height: ROW_H, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-light)', flexShrink: 0 }}>
         <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-4)', flexShrink: 0 }}>
-          <div style={{ width: 12, height: 12, background: m.is_completed ? 'var(--success)' : 'var(--accent-primary)', borderRadius: 2, transform: 'rotate(45deg)', flexShrink: 0, marginLeft: 16 }} />
+          <div style={{ width: 12, height: 12, background: m.is_completed ? 'var(--success)' : 'var(--accent-primary)', transform: 'rotate(45deg)', flexShrink: 0, marginLeft: 16 }} />
           <span style={{ fontSize: 'var(--text-xs)', color: m.is_completed ? 'var(--text-muted)' : 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: m.is_completed ? 'line-through' : 'none', flex: 1 }}>
             {m.title}
           </span>
@@ -655,7 +651,7 @@ function GanttLabelRow({ row, onEdit }) {
   }
 
   const task = row.task
-  const PRIORITY_DOT = { High: '#E05252', Medium: '#F0A500', Low: '#4CAF7D' }
+  const PRIORITY_DOT = { High: '#C0281C', Medium: '#B26A00', Low: '#0F7B55' }
 
   return (
     <div
@@ -665,7 +661,7 @@ function GanttLabelRow({ row, onEdit }) {
       onDoubleClick={() => onEdit(task)}
     >
       <div style={{ width: TASK_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3) 0 calc(var(--space-4) + 8px)', flexShrink: 0, overflow: 'hidden' }}>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: PRIORITY_DOT[task.priority] || '#ccc', flexShrink: 0 }} />
+        <div style={{ width: 7, height: 7, background: PRIORITY_DOT[task.priority] || '#ccc', flexShrink: 0 }} />
 
         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: task.status === 'Done' ? 400 : 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none' }}>
           {task.title}
@@ -679,7 +675,7 @@ function GanttLabelRow({ row, onEdit }) {
       <div style={{ width: ASSIGNEE_COL_W, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-3)', flexShrink: 0, borderLeft: '1px solid var(--border-light)', overflow: 'hidden' }}>
         {task.assignee ? (
           <>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: task.assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+            <div style={{ width: 22, height: 22, background: task.assignee.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'white', flexShrink: 0 }}>
               {task.assignee.name.charAt(0)}
             </div>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>

@@ -1,14 +1,14 @@
 
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase, supabaseConfigured } from './supabase'
+import { ROLE_PERMISSIONS, roleRank } from './constants'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
-  const [userRole, setUserRole] = useState(null)
-  const [userEmployee, setUserEmployee] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -31,10 +31,9 @@ export function AuthProvider({ children }) {
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
-          setTimeout(() => fetchUserProfile(session.user), 0)
+          setTimeout(() => loadProfile(session.user.id), 0)
         } else {
-          setUserRole(null)
-          setUserEmployee(null)
+          setProfile(null)
           setLoading(false)
         }
       }
@@ -43,28 +42,50 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchUserProfile(authUser) {
+  // The profile row is the single source of truth for access: it carries
+  // both the role and the approval status, and RLS reads the same row
+  // server-side. Nothing here is trusted by the database.
+  async function loadProfile(userId) {
     try {
-      // Role lives in auth.users.raw_app_meta_data.role (set by migration v2).
-      // It is exposed to the client via the JWT as app_metadata.
-      const role = authUser.app_metadata?.role || 'member'
-      setUserRole(role)
-
-      // Linked employee row is found via employees.auth_user_id
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('auth_user_id', authUser.id)
+      let { data, error } = await supabase
+        .from('profiles')
+        .select('*, employee:employees(*)')
+        .eq('id', userId)
         .maybeSingle()
 
-      setUserEmployee(employee || null)
+      // No row: the sign-up trigger didn't run (account predates the
+      // migration, or the row was deleted). ensure_profile() creates a
+      // pending one so the person shows up in the admin's queue instead
+      // of silently having a broken account.
+      if (!error && !data) {
+        const { error: rpcError } = await supabase.rpc('ensure_profile')
+        if (!rpcError) {
+          ({ data } = await supabase
+            .from('profiles')
+            .select('*, employee:employees(*)')
+            .eq('id', userId)
+            .maybeSingle())
+        }
+      }
+
+      setProfile(data || null)
     } catch (err) {
-      console.error('Error fetching user profile:', err)
-      setUserRole(authUser.app_metadata?.role || 'member')
-      setUserEmployee(null)
+      console.error('Error loading profile:', err)
+      setProfile(null)
     }
     setLoading(false)
   }
+
+  const refreshProfile = useCallback(async () => {
+    if (!user?.id) return null
+    const { data } = await supabase
+      .from('profiles')
+      .select('*, employee:employees(*)')
+      .eq('id', user.id)
+      .maybeSingle()
+    setProfile(data || null)
+    return data || null
+  }, [user?.id])
 
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -74,66 +95,31 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  async function signUp(email, password, fullName, role = 'member') {
-    // Store the intended role + name in user metadata during sign-up.
-    // This works even without an authenticated session because Supabase
-    // stores metadata as part of the auth.users record directly.
-    // The actual user_roles row is created on first login in fetchUserProfile.
+  // Self-service registration. The role is deliberately NOT a parameter —
+  // the database trigger always creates the profile as viewer/pending and
+  // an admin assigns the real role from the Access page.
+  async function signUp(email, password, fullName) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: {
-          pending_role: role,
-          full_name: fullName,
-        },
+        data: { full_name: fullName },
       },
     })
-    if (error) return { error, needsConfirmation: false }
 
-    const needsConfirmation = !data.session
+    if (error) return { data: null, error, needsConfirmation: false }
 
-    // If we got a session immediately (email confirm OFF), try to insert
-    // the role right now so the user doesn't have to re-login.
-    if (data.session && data.user) {
-      await createRoleFromMetadata(data.user)
+    // With email confirmation on, Supabase returns a decoy user with an
+    // empty identities array rather than leaking that the address is taken.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      return {
+        data: null,
+        error: { message: 'An account with this email already exists. Try signing in instead.' },
+        needsConfirmation: false,
+      }
     }
 
-    console.log(`Sign-up complete. Role "${role}" stored in metadata for ${data.user?.id}`)
-    return { data, error: null, needsConfirmation }
-  }
-
-  // Helper: create the user_roles row from user metadata
-  async function createRoleFromMetadata(authUser) {
-    const role = authUser.user_metadata?.pending_role
-    const fullName = authUser.user_metadata?.full_name
-    if (!role) return
-
-    let employeeId = null
-    if (fullName) {
-      const { data: employees } = await supabase
-        .from('employees')
-        .select('id, name')
-      const matched = (employees || []).find(
-        e => e.name.toLowerCase().trim() === fullName.toLowerCase().trim()
-      )
-      employeeId = matched?.id ?? null
-    }
-
-    const { error: roleError } = await supabase.from('user_roles').insert({
-      auth_user_id: authUser.id,
-      employee_id: employeeId,
-      role,
-    })
-
-    if (roleError) {
-      console.error('Failed to insert user role:', roleError)
-    } else {
-      console.log(`User role created: ${role}`)
-      await supabase.auth.updateUser({
-        data: { pending_role: null, full_name: null },
-      })
-    }
+    return { data, error: null, needsConfirmation: !data.session }
   }
 
   async function signOut() {
@@ -141,8 +127,7 @@ export function AuthProvider({ children }) {
     if (!error) {
       setSession(null)
       setUser(null)
-      setUserRole(null)
-      setUserEmployee(null)
+      setProfile(null)
     }
     return { error }
   }
@@ -154,37 +139,33 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
-  // Role-based permission checks
-  // admin  = Principal Architect → full control of everything
-  // member = Senior Architect   → view / read-only access
+  // Only an approved account carries a usable role — pending, suspended
+  // and rejected all resolve to null, matching current_user_role() in SQL.
+  const isApproved = profile?.status === 'approved'
+  const userRole = isApproved ? profile.role : null
+  const userStatus = profile?.status ?? null
+  const userEmployee = profile?.employee ?? null
+
   function hasPermission(action) {
-    const permissions = {
-      admin: [
-        'manage_team', 'manage_projects', 'manage_tasks',
-        'manage_documents', 'manage_roles', 'view_all',
-        'delete_projects', 'delete_tasks', 'delete_members',
-        'manage_settings', 'manage_billing', 'invite_users',
-      ],
-      member: [
-        'view_all',
-      ],
-      viewer: [
-        'view_all',
-      ],
-    }
-    return (permissions[userRole] || []).includes(action)
+    const required = ROLE_PERMISSIONS[action]
+    if (required === undefined) return false
+    return roleRank(userRole) >= required
   }
 
   const value = {
     session,
     user,
+    profile,
     userRole,
+    userStatus,
     userEmployee,
     loading,
+    isApproved,
     signIn,
     signUp,
     signOut,
     updatePassword,
+    refreshProfile,
     hasPermission,
     isAuthenticated: !!session,
   }

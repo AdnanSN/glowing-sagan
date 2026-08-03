@@ -8,7 +8,7 @@ import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 
 const STATUS_COLORS = {
-  'To Do': { bg: '#F2F2F7', color: '#555' },
+  'To Do': { bg: '#F3F4F6', color: '#6B7280' },
   'In Progress': { bg: 'var(--info-light)', color: 'var(--info)' },
   'In Review': { bg: 'var(--warning-light)', color: 'var(--warning)' },
   'Done': { bg: 'var(--success-light)', color: 'var(--success)' },
@@ -117,7 +117,6 @@ export function Tasks() {
   )
 
   const colStatusStyle = (status) => ({
-    borderRadius: '50%',
     width: 10, height: 10, flexShrink: 0,
     background: STATUS_COLORS[status]?.color || '#ccc'
   })
@@ -184,7 +183,7 @@ export function Tasks() {
                     <div key={task.id} className="kanban-task-card" onClick={() => canManage && openEdit(task)} style={{ cursor: canManage ? 'pointer' : 'default' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
                         <div className="kanban-task-title">{task.title}</div>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: PRIORITY_COLORS[task.priority], flexShrink: 0, marginTop: 4 }} title={task.priority + ' priority'} />
+                        <div style={{ width: 8, height: 8, background: PRIORITY_COLORS[task.priority], flexShrink: 0, marginTop: 4 }} title={task.priority + ' priority'} />
                       </div>
                       {task.description && (
                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>

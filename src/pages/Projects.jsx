@@ -146,7 +146,7 @@ export function Projects() {
                     <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p.id}`)}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                          <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                          <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
                           <div>
                             <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
                             {p.location && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{p.location}</div>}

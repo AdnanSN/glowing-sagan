@@ -7,7 +7,8 @@
       "Bash(npx --yes esbuild --loader:.jsx=jsx --bundle=false src/pages/Gantt.jsx)",
       "mcp__Claude_Preview__preview_start",
       "Bash(git revert *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(curl -s \"https://preview.nhnarchitects.com/_next/static/chunks/88246c2703f407d3.css\" -o \"C:/Users/adnan/AppData/Local/Temp/claude/C--Users-adnan-dev-NHN-glowing-sagan/b69e378f-bb53-4912-a253-318ff2dbb27f/scratchpad/nhn.css\")"
     ]
   }
 }
