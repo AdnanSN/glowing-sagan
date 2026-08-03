@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { RefreshButton } from '../components/RefreshButton'
+import { Avatar } from '../components/Avatar'
 import { ACCESS_ROLES, ACCESS_STATUSES, roleMeta } from '../lib/constants'
 import {
   ShieldCheck, UserPlus, Check, X, Ban, RotateCcw, Trash2, AlertCircle, Users,
@@ -26,7 +27,7 @@ export function AccessControl() {
     setLoading(true)
     const [profRes, empRes] = await Promise.all([
       supabase.from('profiles').select('*').order('requested_at', { ascending: false }),
-      supabase.from('employees').select('id, name, role, color').order('name'),
+      supabase.from('employees').select('id, name, role, color, avatar_url').order('name'),
     ])
     if (profRes.error) setError(profRes.error.message)
     setProfiles(profRes.data || [])
@@ -209,14 +210,20 @@ export function AccessControl() {
                       {decided.map(p => {
                         const isSelf = p.id === user?.id
                         const meta = roleMeta(p.role)
+                        // The photo hangs off the linked team record, so an
+                        // unlinked login still falls back to the initial.
+                        const linked = employees.find(e => e.id === p.employee_id)
                         const statusMeta = ACCESS_STATUSES[p.status] || ACCESS_STATUSES.pending
                         return (
                           <tr key={p.id}>
                             <td>
                               <div className="access-person">
-                                <div className="avatar avatar-sm" style={{ background: meta.color }}>
-                                  {(p.full_name || p.email || '?').charAt(0).toUpperCase()}
-                                </div>
+                                <Avatar
+                                  name={p.full_name || p.email || '?'}
+                                  src={linked?.avatar_url}
+                                  color={meta.color}
+                                  size="sm"
+                                />
                                 <div>
                                   <div className="access-person-name">
                                     {p.full_name || '—'}

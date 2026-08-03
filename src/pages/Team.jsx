@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase'
 import { Modal } from '../components/Modal'
 import { Plus, Users, Pencil, Trash2 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
+import { Avatar } from '../components/Avatar'
+import { AvatarUploader } from '../components/AvatarUploader'
+import { deleteAvatarFile } from '../lib/avatar'
 import { PROJECT_COLORS } from '../lib/constants'
 
 const ROLES = [
@@ -11,7 +14,7 @@ const ROLES = [
   'CAD Technician', 'Landscape Architect', 'Site Supervisor', 'Other'
 ]
 
-const EMPTY_FORM = { name: '', role: 'Architect', email: '', color: PROJECT_COLORS[0] }
+const EMPTY_FORM = { name: '', role: 'Architect', email: '', color: PROJECT_COLORS[0], avatar_url: null }
 
 export function Team() {
   const [employees, setEmployees] = useState([])
@@ -63,6 +66,8 @@ export function Team() {
   async function handleDelete(id) {
     if (!confirm('Remove this team member? Their tasks will become unassigned.')) return
     await supabase.from('employees').delete().eq('id', id)
+    // Nothing points at the photo any more, so don't leave it in the bucket.
+    await deleteAvatarFile(id)
     fetchAll()
   }
 
@@ -107,9 +112,7 @@ export function Team() {
               return (
                 <div key={emp.id} className="card" style={{ padding: 'var(--space-5)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-                    <div className="avatar avatar-lg" style={{ background: emp.color }}>
-                      {emp.name.charAt(0)}
-                    </div>
+                    <Avatar name={emp.name} src={emp.avatar_url} color={emp.color} size="lg" />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>{emp.name}</div>
                       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{emp.role}</div>
@@ -158,6 +161,23 @@ export function Team() {
           <label className="form-label">Email</label>
           <input className="form-input" type="email" placeholder="e.g. sarah@studio.com" value={form.email}
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Photo</label>
+          {editing ? (
+            <AvatarUploader
+              employeeId={editing.id}
+              name={form.name}
+              color={form.color}
+              value={form.avatar_url}
+              onChange={url => setForm(f => ({ ...f, avatar_url: url }))}
+              hint="People can also set their own from the sidebar."
+            />
+          ) : (
+            <div className="no-data" style={{ textAlign: 'left' }}>
+              Add the member first, then reopen this to set a photo.
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Avatar Color</label>

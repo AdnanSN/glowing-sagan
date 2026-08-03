@@ -373,6 +373,15 @@ h1, h2, h3, h4, h5, h6 {
   gap: var(--space-4);
 }
 
+/* Back-button + title as one unit, so the header's space-between still
+   pushes the actions to the far edge. */
+.page-header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .page-header-left {
   display: flex;
   flex-direction: column;
@@ -683,6 +692,86 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ===========================
+   STAGE EDITOR
+   =========================== */
+.stage-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.stage-editor-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.stage-editor-index {
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  width: 16px;
+  flex-shrink: 0;
+  padding-top: 11px;
+  text-align: right;
+}
+
+.stage-editor-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-editor-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.stage-editor-current { color: var(--accent-primary); font-weight: var(--fw-bold); }
+
+.stage-editor-controls {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.stage-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.stage-editor-error {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.stage-editor-intro {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--space-4);
+}
+
+/* The pipeline's own edit button, sat beside the "Project Stage" label */
+.stage-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+/* ===========================
    PROGRESS BARS
    =========================== */
 .progress-bar-container {
@@ -893,6 +982,15 @@ h1, h2, h3, h4, h5, h6 {
   color: white;
   flex-shrink: 0;
   border: 1px solid #fff;
+  overflow: hidden;
+}
+
+/* Photo fills the square; the coloured initial stays the fallback. */
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .avatar-sm {
@@ -916,6 +1014,108 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .avatar-group .avatar:first-child { margin-left: 0; }
+
+/* ===========================
+   PROJECT FOLDERS
+   =========================== */
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-5);
+}
+
+.folder-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  padding: var(--space-5);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+}
+
+.folder-card:hover {
+  border-color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.folder-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.folder-card-icon {
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+/* Rename/delete stay out of the way until you mean to use them. */
+.folder-card-actions {
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.folder-card:hover .folder-card-actions,
+.folder-card:focus-within .folder-card-actions {
+  opacity: 1;
+}
+
+.folder-card-name {
+  font-size: var(--text-md);
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  line-height: var(--lh-snug);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.folder-card-meta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: var(--space-2);
+  line-height: 1.4;
+}
+
+/* One dot per project in the folder — a glance at how full it is. */
+.folder-card-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: var(--space-4);
+}
+
+.folder-card-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.folder-card-unfiled {
+  border-style: dashed;
+}
+
+.folder-search-note {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-4);
+}
+
+/* Touch devices never hover, so anything revealed on hover would be
+   permanently invisible there. Show it outright instead. */
+@media (hover: none) {
+  .folder-card-actions { opacity: 1; }
+}
 
 /* ===========================
    PROJECT CARDS
@@ -2223,6 +2423,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar-user-avatar {
+  position: relative;
   width: 36px;
   height: 36px;
   display: flex;
@@ -2232,6 +2433,59 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 13px;
   font-weight: var(--fw-bold);
   flex-shrink: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* A corner badge rather than a hover overlay: it stays discoverable on
+   touch, where nothing ever hovers, without hiding the face. */
+.sidebar-user-avatar-edit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  background: var(--text-primary);
+  color: #fff;
+  box-shadow: -1px -1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.sidebar-user-avatar:hover .sidebar-user-avatar-edit {
+  background: var(--accent-primary);
+}
+
+/* ===========================
+   AVATAR UPLOADER
+   =========================== */
+.avatar-uploader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.avatar-uploader-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.avatar-uploader-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.avatar-uploader-hint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .sidebar-user-details {

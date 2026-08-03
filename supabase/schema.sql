@@ -2,7 +2,9 @@
 -- NHN Architects — Supabase Schema (fresh install)
 --
 -- For an EXISTING project, do not run this. Run the migrations in
--- order instead: migration_v2_auth.sql then migration_v3_self_signup.sql.
+-- order instead: migration_v2_auth.sql, migration_v3_self_signup.sql,
+-- migration_v4_avatars.sql, migration_v5_folders.sql, then
+-- migration_v6_project_stages.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -19,18 +21,42 @@ create table if not exists employees (
   role text not null,                       -- job title, e.g. "Senior Architect"
   email text,
   color text not null default '#C8A96E',
+  avatar_url text,                          -- public URL of their photo, see the STORAGE section
   auth_user_id uuid unique references auth.users(id) on delete set null,
   created_at timestamptz default now()
 );
+
+-- PROJECT FOLDERS (how you file projects — renameable, and kept
+-- deliberately separate from projects.status, which is what a project IS)
+create table if not exists project_folders (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  position int not null default 0,          -- display order; ties break on name
+  created_at timestamptz not null default now()
+);
+
+-- Two folders with the same name would be a filing system that lies.
+create unique index if not exists project_folders_name_unique
+  on project_folders (lower(name));
 
 -- PROJECTS
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   client text not null,
+  -- SET NULL: deleting a folder files its contents under "Unfiled",
+  -- it never deletes projects.
+  folder_id uuid references project_folders(id) on delete set null,
   project_type text not null default 'Residential',
   status text not null default 'Active', -- Active, Planning, Paused, Completed, Cancelled
   current_stage text not null default 'Briefing',
+  -- Each project owns its own ordered stage list; current_stage names
+  -- one of these. Kept as an array because it is always read whole,
+  -- alongside the project row, and never queried across projects.
+  stages text[] not null default array[
+    'Briefing', 'Schematic Design', 'Design Development',
+    'Construction Docs', 'Tender', 'Construction', 'Handover'
+  ],
   color text not null default '#C8A96E',
   budget numeric,
   start_date date,
@@ -38,7 +64,8 @@ create table if not exists projects (
   description text,
   location text,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  constraint projects_stages_not_empty check (array_length(stages, 1) >= 1)
 );
 
 -- TASKS
@@ -351,7 +378,8 @@ grant execute on function public.admin_delete_user(uuid) to authenticated;
 -- READ requires an approved account. WRITE follows the ladder.
 -- ============================================================
 
-alter table employees  enable row level security;
+alter table employees       enable row level security;
+alter table project_folders enable row level security;
 alter table projects   enable row level security;
 alter table tasks      enable row level security;
 alter table milestones enable row level security;
@@ -379,6 +407,12 @@ create policy "read employees" on employees for select to authenticated
   using (public.is_approved());
 create policy "admin write employees" on employees for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
+
+-- PROJECT FOLDERS — manager and above reorganise
+create policy "read project folders" on project_folders for select to authenticated
+  using (public.is_approved());
+create policy "manager write project folders" on project_folders for all to authenticated
+  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
 
 -- PROJECTS — manager and above
 create policy "read projects" on projects for select to authenticated
@@ -411,6 +445,174 @@ create policy "member insert comments" on comments for insert to authenticated
   with check (public.has_min_role('member'));
 create policy "admin manage comments" on comments for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
+
+
+-- ============================================================
+-- STORAGE — profile photos
+-- One object per person at avatars/<employee_id>/avatar, uploaded
+-- with upsert, so storage is bounded by headcount rather than by how
+-- often people change their picture. The browser downscales to a
+-- 256px WebP square first (src/lib/avatar.js) — ~5–10 KB each.
+-- ============================================================
+
+-- The first path segment is an employee id; a malformed path must
+-- fail the policy rather than raise a cast error.
+create or replace function public.try_uuid(t text)
+returns uuid language plpgsql immutable as $$
+begin
+  return t::uuid;
+exception when others then
+  return null;
+end$$;
+
+create or replace function public.owns_employee(emp uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select emp is not null and exists (
+    select 1 from public.employees where id = emp and auth_user_id = auth.uid()
+  );
+$$;
+
+-- 512 KB / image mimes is a backstop against someone bypassing the
+-- app and parking a raw camera file in the quota.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 524288, array['image/webp', 'image/jpeg', 'image/png'])
+on conflict (id) do update set
+  public = true, file_size_limit = 524288,
+  allowed_mime_types = array['image/webp', 'image/jpeg', 'image/png'];
+
+-- Read is open — that is what makes the bucket CDN-cacheable. Writes
+-- are your own folder only, or anyone's if you are an admin (so a
+-- colleague without a login can still be given a picture).
+drop policy if exists "avatars are publicly readable" on storage.objects;
+create policy "avatars are publicly readable" on storage.objects for select
+  using (bucket_id = 'avatars');
+
+drop policy if exists "upload own avatar" on storage.objects;
+create policy "upload own avatar" on storage.objects for insert to authenticated
+with check (bucket_id = 'avatars' and (public.is_admin()
+  or public.owns_employee(public.try_uuid((storage.foldername(name))[1]))));
+
+drop policy if exists "replace own avatar" on storage.objects;
+create policy "replace own avatar" on storage.objects for update to authenticated
+using (bucket_id = 'avatars' and (public.is_admin()
+  or public.owns_employee(public.try_uuid((storage.foldername(name))[1]))))
+with check (bucket_id = 'avatars' and (public.is_admin()
+  or public.owns_employee(public.try_uuid((storage.foldername(name))[1]))));
+
+drop policy if exists "delete own avatar" on storage.objects;
+create policy "delete own avatar" on storage.objects for delete to authenticated
+using (bucket_id = 'avatars' and (public.is_admin()
+  or public.owns_employee(public.try_uuid((storage.foldername(name))[1]))));
+
+-- `employees` is admin-write only, so an ordinary user cannot update
+-- their own row. This is the one narrow hole in that wall: avatar_url
+-- only, on the row linked to the caller's login only.
+create or replace function public.set_my_avatar(p_url text)
+returns public.employees
+language plpgsql security definer set search_path = public as $$
+declare
+  v_url text := nullif(btrim(coalesce(p_url, '')), '');
+  v_emp public.employees;
+begin
+  if not public.is_approved() then
+    raise exception 'Your account has not been approved yet';
+  end if;
+
+  -- Only an image we host. Otherwise a user could point their avatar
+  -- at any external URL, which then loads in every teammate's browser.
+  if v_url is not null
+     and v_url !~ '^https://[A-Za-z0-9.-]+/storage/v1/object/public/avatars/' then
+    raise exception 'Avatar must be an uploaded image';
+  end if;
+
+  update public.employees set avatar_url = v_url
+   where auth_user_id = auth.uid()
+  returning * into v_emp;
+
+  if v_emp.id is null then
+    raise exception 'Your login is not linked to a team member yet — ask an administrator to link it on the Access page';
+  end if;
+
+  return v_emp;
+end$$;
+
+revoke all on function public.set_my_avatar(text) from public, anon;
+grant execute on function public.set_my_avatar(text) to authenticated;
+
+
+-- ============================================================
+-- SAVING A NEW STAGE LIST
+-- current_stage and tasks.stage refer to stages BY NAME, so a rename
+-- or a delete has to be tidied up in the same breath. One function so
+-- all of it lands in a single transaction.
+-- p_renames maps old -> new, e.g. {"Tender": "Tender & Award"}
+-- ============================================================
+create or replace function public.update_project_stages(
+  p_project uuid, p_stages text[], p_renames jsonb default '{}'::jsonb
+)
+returns public.projects
+language plpgsql security definer set search_path = public as $$
+declare
+  v_project public.projects;
+  v_old text; v_new text; v_count int;
+begin
+  if not public.has_min_role('manager') then
+    raise exception 'Only a project lead or administrator can change stages';
+  end if;
+
+  v_count := coalesce(array_length(p_stages, 1), 0);
+  if v_count = 0 then
+    raise exception 'A project needs at least one stage';
+  end if;
+  if exists (select 1 from unnest(p_stages) s where btrim(coalesce(s, '')) = '') then
+    raise exception 'Stage names cannot be blank';
+  end if;
+  if (select count(distinct lower(btrim(s))) from unnest(p_stages) s) <> v_count then
+    raise exception 'Stage names must be unique';
+  end if;
+
+  -- Renames first, so the checks below compare against the new names.
+  for v_old, v_new in select key, value #>> '{}' from jsonb_each(p_renames) loop
+    update public.tasks set stage = v_new
+     where project_id = p_project and stage = v_old;
+    update public.projects set current_stage = v_new
+     where id = p_project and current_stage = v_old;
+  end loop;
+
+  update public.projects set stages = p_stages, updated_at = now()
+   where id = p_project returning * into v_project;
+
+  if v_project.id is null then
+    raise exception 'Project not found';
+  end if;
+
+  -- Deleting the stage a project sits on must not leave it pointing
+  -- at nothing.
+  if not (v_project.current_stage = any(p_stages)) then
+    update public.projects set current_stage = p_stages[1]
+     where id = p_project returning * into v_project;
+  end if;
+
+  -- Keep the task, drop the label that no longer exists.
+  update public.tasks set stage = null
+   where project_id = p_project and stage is not null
+     and not (stage = any(p_stages));
+
+  return v_project;
+end$$;
+
+revoke all on function public.update_project_stages(uuid, text[], jsonb) from public, anon;
+grant execute on function public.update_project_stages(uuid, text[], jsonb) to authenticated;
+
+
+-- ============================================================
+-- STARTING FOLDERS
+-- Only on a genuinely empty table, so re-running this file never
+-- resurrects a folder somebody deleted.
+-- ============================================================
+insert into project_folders (name, position)
+select * from (values ('Ongoing', 1), ('On Hold', 2), ('Completed', 3)) as v(name, position)
+where not exists (select 1 from project_folders);
 
 
 -- ============================================================

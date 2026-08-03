@@ -5,15 +5,18 @@ import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import {
   ArrowLeft, Plus, CheckSquare, Check, Pencil, Trash2,
-  FileText, ExternalLink, Send, Flag, MapPin, Calendar, DollarSign, Clock
+  FileText, ExternalLink, Send, Flag, MapPin, Calendar, DollarSign, Clock, Settings2
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
+import { Avatar } from '../components/Avatar'
 import { format, isPast, isToday } from 'date-fns'
 import {
-  STAGES, STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
+  STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
   PROJECT_TYPES, PROJECT_STATUSES, PROJECT_COLORS,
-  getStatusColor
+  projectStages, getStatusColor
 } from '../lib/constants'
+import { StageEditor } from '../components/StageEditor'
+import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
 const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '' }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
@@ -47,6 +50,10 @@ export function ProjectDetail() {
   const [editingDoc, setEditingDoc] = useState(null)
   const [docForm, setDocForm] = useState(EMPTY_DOC)
 
+  const [stageModal, setStageModal] = useState(false)
+  const [stageRows, setStageRows] = useState([])
+  const [stageSaveError, setStageSaveError] = useState('')
+
   const [projectModal, setProjectModal] = useState(false)
   const [projectForm, setProjectForm] = useState(null)
 
@@ -60,7 +67,7 @@ export function ProjectDetail() {
     setLoading(true)
     const [p, t, m, d, c, e] = await Promise.all([
       supabase.from('projects').select('*').eq('id', id).single(),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color)').eq('project_id', id).order('created_at'),
+      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('comments').select('*').eq('project_id', id).order('created_at'),
@@ -77,6 +84,32 @@ export function ProjectDetail() {
   }
 
   // === STAGE UPDATE ===
+  // === STAGES ===
+  function openStageModal() {
+    setStageSaveError('')
+    setStageRows(toStageRows(project.stages))
+    setStageModal(true)
+  }
+
+  async function saveStages() {
+    setSaving(true)
+    setStageSaveError('')
+    // One call: the function renames, re-points current_stage and
+    // re-labels tasks in the same transaction.
+    const { error } = await supabase.rpc('update_project_stages', {
+      p_project: id,
+      p_stages: stageNames(stageRows),
+      p_renames: stageRenames(stageRows),
+    })
+    setSaving(false)
+    if (error) {
+      setStageSaveError(error.message)
+      return
+    }
+    setStageModal(false)
+    fetchAll()
+  }
+
   async function updateStage(stage) {
     await supabase.from('projects').update({ current_stage: stage, updated_at: new Date().toISOString() }).eq('id', id)
     setProject(p => ({ ...p, current_stage: stage }))
@@ -216,7 +249,15 @@ export function ProjectDetail() {
   const doneTasks = tasks.filter(t => t.status === 'Done').length
   const totalTasks = tasks.length
   const taskProgress = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0
-  const currentStageIdx = STAGES.indexOf(project.current_stage)
+  const stages = projectStages(project)
+  const currentStageIdx = stages.indexOf(project.current_stage)
+
+  // How many tasks carry each stage label, so the editor can warn
+  // before a delete strips them.
+  const stageTaskCounts = tasks.reduce((acc, t) => {
+    if (t.stage) acc[t.stage] = (acc[t.stage] || 0) + 1
+    return acc
+  }, {})
 
   const taskModalFooter = (
     <>
@@ -330,9 +371,16 @@ export function ProjectDetail() {
 
         {/* Stage Pipeline */}
         <div className="card" style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-5) var(--space-6)' }}>
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>Project Stage</div>
+          <div className="stage-card-header">
+            <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Project Stage</span>
+            {canManage && (
+              <button className="btn btn-ghost btn-sm" onClick={openStageModal}>
+                <Settings2 size={13} /> Edit Stages
+              </button>
+            )}
+          </div>
           <div className="stage-pipeline">
-            {STAGES.map((stage, i) => (
+            {stages.map((stage, i) => (
               <div
                 key={stage}
                 className={`stage-pill${i < currentStageIdx ? ' done' : ''}${stage === project.current_stage ? ' active' : ''}`}
@@ -406,9 +454,8 @@ export function ProjectDetail() {
                                 </span>
                               )}
                               {task.assignee && (
-                                <div className="avatar avatar-sm" style={{ background: task.assignee.color }} title={task.assignee.name}>
-                                  {task.assignee.name.charAt(0)}
-                                </div>
+                                <Avatar name={task.assignee.name} src={task.assignee.avatar_url}
+                                  color={task.assignee.color} size="sm" />
                               )}
                               {canManage && <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>}
                               {canManage && <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
@@ -599,7 +646,7 @@ export function ProjectDetail() {
           <label className="form-label">Stage</label>
           <select className="form-select" value={taskForm.stage} onChange={e => setTaskForm(f => ({ ...f, stage: e.target.value }))}>
             <option value="">— Any Stage —</option>
-            {STAGES.map(s => <option key={s}>{s}</option>)}
+            {stages.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
         {editingTask && canManage && (
@@ -693,7 +740,7 @@ export function ProjectDetail() {
                 <label className="form-label">Current Stage</label>
                 <select className="form-select" value={projectForm.current_stage}
                   onChange={e => setProjectForm(f => ({ ...f, current_stage: e.target.value }))}>
-                  {STAGES.map(s => <option key={s}>{s}</option>)}
+                  {stages.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -735,6 +782,36 @@ export function ProjectDetail() {
             </div>
           </>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={stageModal}
+        onClose={() => setStageModal(false)}
+        title="Edit Project Stages"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setStageModal(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveStages}
+              disabled={saving || !!stageError(stageRows)}>
+              {saving ? 'Saving…' : 'Save Stages'}
+            </button>
+          </>
+        }
+      >
+        <div className="form-group">
+          <div className="stage-editor-intro">
+            These stages belong to this project only. Renaming one keeps every
+            task that referenced it; deleting one only removes the label.
+          </div>
+          <StageEditor
+            rows={stageRows}
+            onChange={setStageRows}
+            currentStage={project.current_stage}
+            taskCounts={stageTaskCounts}
+            disabled={saving}
+          />
+        </div>
+        {stageSaveError && <div className="stage-editor-error">{stageSaveError}</div>}
       </Modal>
     </>
   )

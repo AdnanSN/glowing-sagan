@@ -2,11 +2,12 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FolderKanban, CheckSquare, Users,
-  CalendarDays, FileText, Menu, X, GanttChart, LogOut, Shield, ShieldCheck
+  CalendarDays, FileText, Menu, X, GanttChart, LogOut, Shield, ShieldCheck, Camera
 } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { roleMeta } from '../lib/constants'
+import { ProfilePhotoModal } from './ProfilePhotoModal'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -22,6 +23,7 @@ const navItems = [
 export function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const [photoOpen, setPhotoOpen] = useState(false)
   const location = useLocation()
   const { user, userRole, userEmployee, signOut, hasPermission } = useAuth()
 
@@ -71,6 +73,7 @@ export function Layout({ children }) {
   const displayName = userEmployee?.name || user?.email?.split('@')[0] || 'User'
   const displayInitial = displayName.charAt(0).toUpperCase()
   const avatarColor = userEmployee?.color || '#1A1A1A'
+  const avatarUrl = userEmployee?.avatar_url || null
   const role = roleMeta(userRole)
 
   return (
@@ -107,9 +110,18 @@ export function Layout({ children }) {
         {/* User section at bottom */}
         <div className="sidebar-user-section">
           <div className="sidebar-user-info">
-            <div className="sidebar-user-avatar" style={{ background: avatarColor }}>
-              {displayInitial}
-            </div>
+            <button
+              className="sidebar-user-avatar"
+              style={{ background: avatarColor }}
+              onClick={() => setPhotoOpen(true)}
+              title="Change your photo"
+              aria-label="Change your photo"
+            >
+              {avatarUrl
+                ? <img className="avatar-img" src={avatarUrl} alt="" decoding="async" />
+                : displayInitial}
+              <span className="sidebar-user-avatar-edit"><Camera size={9} /></span>
+            </button>
             <div className="sidebar-user-details">
               <div className="sidebar-user-name">{displayName}</div>
               <div className="sidebar-user-role" style={{ color: role.color }}>
@@ -142,6 +154,8 @@ export function Layout({ children }) {
 
         {children}
       </div>
+
+      <ProfilePhotoModal isOpen={photoOpen} onClose={() => setPhotoOpen(false)} />
     </div>
   )
 }

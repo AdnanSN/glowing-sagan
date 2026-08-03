@@ -1,5 +1,9 @@
 // Shared constants
-export const STAGES = [
+
+// Every project now carries its own ordered stage list in
+// projects.stages. This is only what a NEW project starts with, and
+// the fallback for a row read before migration_v6 ran.
+export const DEFAULT_STAGES = [
   'Briefing',
   'Schematic Design',
   'Design Development',
@@ -8,6 +12,11 @@ export const STAGES = [
   'Construction',
   'Handover',
 ]
+
+/** The stage list to render for a project — never an empty array. */
+export function projectStages(project) {
+  return project?.stages?.length ? project.stages : DEFAULT_STAGES
+}
 
 export const STAGE_COLORS = [
   '#6B5CA5',
