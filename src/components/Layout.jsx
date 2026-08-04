@@ -2,7 +2,8 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FolderKanban, CheckSquare, Users,
-  CalendarDays, FileText, Menu, X, GanttChart, LogOut, Shield, ShieldCheck, Camera
+  CalendarDays, FileText, Menu, GanttChart, CalendarRange,
+  LogOut, Shield, ShieldCheck, Camera
 } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -13,7 +14,8 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
-  { to: '/gantt', icon: GanttChart, label: 'Gantt Chart' },
+  { to: '/gantt/project', icon: GanttChart, label: 'Project Timeline' },
+  { to: '/gantt/team', icon: CalendarRange, label: 'Team Schedule' },
   { to: '/team', icon: Users, label: 'Team', requires: 'manage_team' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { to: '/documents', icon: FileText, label: 'Documents' },

@@ -4,8 +4,8 @@
 -- For an EXISTING project, do not run this. Run the migrations in
 -- order instead: migration_v2_auth.sql, migration_v3_self_signup.sql,
 -- migration_v4_avatars.sql, migration_v5_folders.sql,
--- migration_v6_project_stages.sql, migration_v7_drop_budget.sql, then
--- migration_v8_confidential.sql.
+-- migration_v6_project_stages.sql, migration_v7_drop_budget.sql,
+-- migration_v8_confidential.sql, then migration_v9_gantt.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -48,6 +48,10 @@ create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   client text not null,
+  -- The two header fields on the practice's timeline sheet. Free text:
+  -- a project number is a filing convention, not a key.
+  project_number text,
+  revision text,
   -- SET NULL: deleting a folder files its contents under "Unfiled",
   -- it never deletes projects.
   folder_id uuid references project_folders(id) on delete set null,
@@ -87,12 +91,23 @@ create table if not exists tasks (
   start_date date,
   due_date date,
   stage text,
+  -- Per cent complete, as the timeline sheet has always tracked it.
+  -- Deliberately not derived from status: "In Progress" covers
+  -- everything from 5% to 95%.
+  progress smallint not null default 0,
+  -- Order within a stage, so 1.1 / 1.2 / 1.3 stay where they were put
+  -- rather than re-sorting by created_at when a line is inserted.
+  position int not null default 0,
   -- Principal Architects only: one task inside an otherwise ordinary
   -- project.
   is_confidential boolean not null default false,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  constraint tasks_progress_range check (progress between 0 and 100)
 );
+
+create index if not exists tasks_project_stage_position_idx
+  on tasks (project_id, stage, position);
 
 -- MILESTONES
 create table if not exists milestones (

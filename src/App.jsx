@@ -12,7 +12,8 @@ import { Tasks } from './pages/Tasks'
 import { Team } from './pages/Team'
 import { Calendar } from './pages/Calendar'
 import { Documents } from './pages/Documents'
-import { Gantt } from './pages/Gantt'
+import { GanttProject } from './pages/GanttProject'
+import { GanttTeam } from './pages/GanttTeam'
 import { supabaseConfigured } from './lib/supabase'
 import './index.css'
 
@@ -132,11 +133,22 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* The chart is two charts now: one job stage by stage, and the
+          whole team's workload. /gantt keeps old links working. */}
+      <Route path="/gantt" element={<Navigate to="/gantt/project" replace />} />
       <Route
-        path="/gantt"
+        path="/gantt/project"
         element={
           <ProtectedRoute>
-            <Layout><Gantt /></Layout>
+            <Layout><GanttProject /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gantt/team"
+        element={
+          <ProtectedRoute>
+            <Layout><GanttTeam /></Layout>
           </ProtectedRoute>
         }
       />
