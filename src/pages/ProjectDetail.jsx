@@ -5,15 +5,15 @@ import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import {
   ArrowLeft, Plus, CheckSquare, Check, Pencil, Trash2,
-  FileText, ExternalLink, Send, Flag, MapPin, Calendar, DollarSign, Clock, Settings2
+  FileText, ExternalLink, Send, Flag, MapPin, Calendar, Clock, Settings2
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
 import { Avatar } from '../components/Avatar'
 import { format, isPast, isToday } from 'date-fns'
 import {
   STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
-  PROJECT_TYPES, PROJECT_STATUSES, PROJECT_COLORS,
-  projectStages, getStatusColor
+  DEFAULT_PROJECT_TYPE, PROJECT_STATUSES, PROJECT_COLORS,
+  projectStages, projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { StageEditor } from '../components/StageEditor'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
@@ -117,7 +117,7 @@ export function ProjectDetail() {
 
   // === PROJECT EDIT ===
   function openEditProject() {
-    setProjectForm({ ...project, budget: project.budget ?? '' })
+    setProjectForm({ ...project })
     setProjectModal(true)
   }
   function closeProjectModal() { setProjectModal(false); setProjectForm(null) }
@@ -127,11 +127,11 @@ export function ProjectDetail() {
     const payload = {
       name: projectForm.name,
       client: projectForm.client,
-      project_type: projectForm.project_type,
+      // Free text, so it can arrive padded or blank.
+      project_type: projectForm.project_type.trim() || DEFAULT_PROJECT_TYPE,
       status: projectForm.status,
       current_stage: projectForm.current_stage,
       color: projectForm.color,
-      budget: projectForm.budget !== '' && projectForm.budget != null ? parseFloat(projectForm.budget) : null,
       start_date: projectForm.start_date || null,
       end_date: projectForm.end_date || null,
       description: projectForm.description || '',
@@ -320,14 +320,6 @@ export function ProjectDetail() {
         {/* Project Info Strip */}
         <div className="card" style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-5) var(--space-6)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-5)' }}>
-            {project.budget && (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>
-                  <DollarSign size={12} /> Budget
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-md)' }}>${Number(project.budget).toLocaleString()}</div>
-              </div>
-            )}
             {project.start_date && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>
@@ -722,10 +714,17 @@ export function ProjectDetail() {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Project Type</label>
-                <select className="form-select" value={projectForm.project_type}
-                  onChange={e => setProjectForm(f => ({ ...f, project_type: e.target.value }))}>
-                  {PROJECT_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
+                {/* A list + input rather than a select: the standard types
+                    are still one click away, but anything else can be typed. */}
+                <input className="form-input" list="project-type-options"
+                  placeholder="Pick one or type your own"
+                  value={projectForm.project_type}
+                  onChange={e => setProjectForm(f => ({ ...f, project_type: e.target.value }))} />
+                <datalist id="project-type-options">
+                  {projectTypeOptions([project.project_type]).map(t => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
               </div>
               <div className="form-group">
                 <label className="form-label">Status</label>
@@ -735,19 +734,12 @@ export function ProjectDetail() {
                 </select>
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Current Stage</label>
-                <select className="form-select" value={projectForm.current_stage}
-                  onChange={e => setProjectForm(f => ({ ...f, current_stage: e.target.value }))}>
-                  {stages.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Budget ($)</label>
-                <input className="form-input" type="number" value={projectForm.budget}
-                  onChange={e => setProjectForm(f => ({ ...f, budget: e.target.value }))} />
-              </div>
+            <div className="form-group">
+              <label className="form-label">Current Stage</label>
+              <select className="form-select" value={projectForm.current_stage}
+                onChange={e => setProjectForm(f => ({ ...f, current_stage: e.target.value }))}>
+                {stages.map(s => <option key={s}>{s}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <div className="form-group">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -10,15 +10,15 @@ import {
 import { RefreshButton } from '../components/RefreshButton'
 import { format } from 'date-fns'
 import {
-  DEFAULT_STAGES, PROJECT_TYPES, PROJECT_STATUSES, PROJECT_COLORS,
-  projectStages, getStatusColor
+  DEFAULT_STAGES, DEFAULT_PROJECT_TYPE, PROJECT_STATUSES, PROJECT_COLORS,
+  projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { StageEditor } from '../components/StageEditor'
-import { toStageRows, stageNames, stageError } from '../lib/stages'
+import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
 const EMPTY_FORM = {
-  name: '', client: '', project_type: 'Residential', status: 'Active',
-  current_stage: 'Briefing', color: PROJECT_COLORS[0], budget: '',
+  name: '', client: '', project_type: DEFAULT_PROJECT_TYPE, status: 'Active',
+  current_stage: 'Briefing', color: PROJECT_COLORS[0],
   start_date: '', end_date: '', description: '', location: '', folder_id: '',
 }
 
@@ -40,9 +40,17 @@ export function Projects() {
   const [saving, setSaving] = useState(false)
   const [folderModal, setFolderModal] = useState(null) // { id?, name }
   const [folderError, setFolderError] = useState('')
-  // Only used when creating: an existing project's stages are edited on
-  // its own page, where renames can be propagated to its tasks.
-  const [newStageRows, setNewStageRows] = useState([])
+  const [saveError, setSaveError] = useState('')
+  // Stages for whichever project the modal is showing — the defaults when
+  // creating, the project's own list when editing.
+  const [stageRows, setStageRows] = useState([])
+  // { stageName: n } for the project being edited, so the editor can warn
+  // before a delete strips the label off tasks. Fetched on open; the
+  // list page does not otherwise load tasks.
+  const [stageTaskCounts, setStageTaskCounts] = useState({})
+  // Which project the in-flight count query belongs to, so a slow
+  // response for a project you have since closed cannot land.
+  const countsFor = useRef(null)
   const navigate = useNavigate()
 
   // Which folder is open lives in the URL, so browser Back steps out of
@@ -69,19 +77,39 @@ export function Projects() {
   // ── Projects ────────────────────────────────────────────────
   function openNew() {
     setEditing(null)
+    setSaveError('')
     // Creating from inside a folder should file it there by default.
     const preset = openFolderId && openFolderId !== UNFILED ? openFolderId : ''
     setForm({ ...EMPTY_FORM, folder_id: preset })
-    setNewStageRows(toStageRows(DEFAULT_STAGES))
+    setStageRows(toStageRows(DEFAULT_STAGES))
+    setStageTaskCounts({})
+    countsFor.current = null
     setShowModal(true)
   }
-  function openEdit(e, p) {
+
+  async function openEdit(e, p) {
     e.stopPropagation()
+    setSaveError('')
     setEditing(p)
-    setForm({ ...p, budget: p.budget || '', folder_id: p.folder_id || '' })
+    setForm({ ...p, folder_id: p.folder_id || '' })
+    setStageRows(toStageRows(p.stages))
+    setStageTaskCounts({})
+    countsFor.current = p.id
     setShowModal(true)
+
+    const { data } = await supabase.from('tasks').select('stage').eq('project_id', p.id)
+    if (countsFor.current !== p.id) return
+    setStageTaskCounts((data || []).reduce((acc, t) => {
+      if (t.stage) acc[t.stage] = (acc[t.stage] || 0) + 1
+      return acc
+    }, {}))
   }
-  function closeModal() { setShowModal(false); setEditing(null) }
+
+  function closeModal() {
+    setShowModal(false)
+    setEditing(null)
+    countsFor.current = null
+  }
 
   async function handleDelete(e, id) {
     e.stopPropagation()
@@ -92,25 +120,40 @@ export function Projects() {
 
   async function handleSave() {
     setSaving(true)
+    setSaveError('')
+    const stages = stageNames(stageRows)
     const payload = {
       ...form,
-      budget: form.budget ? parseFloat(form.budget) : null,
+      // Free text, so it can arrive padded or blank.
+      project_type: form.project_type.trim() || DEFAULT_PROJECT_TYPE,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       folder_id: form.folder_id || null,
       updated_at: new Date().toISOString(),
     }
+    // The stage picker was populated from this same list, but the list
+    // can be edited after a pick — never save a stage that isn't in it.
+    if (!stages.includes(payload.current_stage)) payload.current_stage = stages[0]
 
     if (editing) {
-      // Stages are not editable here — leave whatever the project has.
+      // Stages go through the function rather than the row: a rename has
+      // to re-label this project's tasks in the same transaction. It runs
+      // first, so a rejected stage change doesn't leave the other fields
+      // saved on their own.
       delete payload.stages
+      const { error } = await supabase.rpc('update_project_stages', {
+        p_project: editing.id,
+        p_stages: stages,
+        p_renames: stageRenames(stageRows),
+      })
+      if (error) {
+        setSaving(false)
+        setSaveError(error.message)
+        return
+      }
       await supabase.from('projects').update(payload).eq('id', editing.id)
     } else {
-      const stages = stageNames(newStageRows)
       payload.stages = stages
-      // The stage picker was populated from this same list, but the list
-      // can be edited after a pick — never save a stage that isn't in it.
-      if (!stages.includes(payload.current_stage)) payload.current_stage = stages[0]
       await supabase.from('projects').insert(payload)
     }
 
@@ -194,9 +237,9 @@ export function Projects() {
   // carries the selection along instead of orphaning it, and deleting it
   // falls back to the first stage — both the moment it happens, rather
   // than being quietly repaired at save time.
-  function handleNewStages(rows) {
-    const owner = newStageRows.find(r => r.name.trim() === form.current_stage)
-    setNewStageRows(rows)
+  function handleStageChange(rows) {
+    const owner = stageRows.find(r => r.name.trim() === form.current_stage)
+    setStageRows(rows)
 
     const names = stageNames(rows)
     if (!names.length) return
@@ -220,16 +263,19 @@ export function Projects() {
 
   const folderName = (id) => folders.find(f => f.id === id)?.name
 
-  // New project: whatever the editor below currently holds. Existing
-  // project: its own saved list.
-  const modalStages = editing ? projectStages(editing) : stageNames(newStageRows)
-  const newStagesInvalid = !editing && !!stageError(newStageRows)
+  // Standard types plus every custom one already in use, so a type
+  // somebody typed on one project is a click away on the next.
+  const typeOptions = projectTypeOptions(projects.map(p => p.project_type))
+
+  // Whatever the editor below currently holds, for both new and existing.
+  const modalStages = stageNames(stageRows)
+  const stagesInvalid = !!stageError(stageRows)
 
   const modalFooter = (
     <>
       <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
       <button className="btn btn-primary" onClick={handleSave}
-        disabled={!form.name || !form.client || saving || newStagesInvalid}>
+        disabled={!form.name || !form.client || saving || stagesInvalid}>
         {saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Project'}
       </button>
     </>
@@ -414,7 +460,6 @@ export function Projects() {
                     <th>Type</th>
                     <th>Stage</th>
                     <th>Status</th>
-                    <th>Budget</th>
                     <th>Deadline</th>
                     {canManage && <th></th>}
                   </tr>
@@ -440,9 +485,6 @@ export function Projects() {
                       <td><span className="tag">{p.project_type}</span></td>
                       <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{p.current_stage}</td>
                       <td><span className={`badge ${getStatusColor(p.status)}`}>{p.status}</span></td>
-                      <td style={{ fontSize: 'var(--text-sm)' }}>
-                        {p.budget ? `$${Number(p.budget).toLocaleString()}` : '—'}
-                      </td>
                       <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                         {p.end_date ? format(new Date(p.end_date), 'd MMM yyyy') : '—'}
                       </td>
@@ -488,10 +530,15 @@ export function Projects() {
           </div>
           <div className="form-group">
             <label className="form-label">Project Type</label>
-            <select className="form-select" value={form.project_type}
-              onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))}>
-              {PROJECT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
+            {/* A list + input rather than a select: the standard types are
+                still one click away, but anything else can be typed. */}
+            <input className="form-input" list="project-type-options"
+              placeholder="Pick one or type your own"
+              value={form.project_type}
+              onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))} />
+            <datalist id="project-type-options">
+              {typeOptions.map(t => <option key={t} value={t} />)}
+            </datalist>
           </div>
         </div>
         <div className="form-row">
@@ -515,17 +562,10 @@ export function Projects() {
             </select>
           </div>
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Budget ($)</label>
-            <input className="form-input" type="number" placeholder="e.g. 450000" value={form.budget}
-              onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Location</label>
-            <input className="form-input" placeholder="e.g. Dubai Marina, UAE" value={form.location}
-              onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-          </div>
+        <div className="form-group">
+          <label className="form-label">Location</label>
+          <input className="form-input" placeholder="e.g. Dubai Marina, UAE" value={form.location}
+            onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
         </div>
         <div className="form-row">
           <div className="form-group">
@@ -556,24 +596,21 @@ export function Projects() {
 
         <div className="form-group">
           <label className="form-label">Project Stages</label>
-          {editing ? (
-            /* Renaming a stage here would have to re-label this project's
-               tasks too, which is what the project page's editor does. One
-               place for that, rather than two that can disagree. */
-            <div className="stage-editor-intro" style={{ marginBottom: 0 }}>
-              {modalStages.length} stage{modalStages.length !== 1 ? 's' : ''}: {modalStages.join(' → ')}
-              <br />Edit them on the project&rsquo;s own page.
-            </div>
-          ) : (
-            <>
-              <div className="stage-editor-intro">
-                Starts from the standard set — add, rename, reorder or remove
-                any of them for this project.
-              </div>
-              <StageEditor rows={newStageRows} onChange={handleNewStages} disabled={saving} />
-            </>
-          )}
+          <div className="stage-editor-intro">
+            {editing
+              ? 'These stages belong to this project only. Renaming one keeps every task that referenced it; deleting one only removes the label.'
+              : 'Starts from the standard set — add, rename, reorder or remove any of them for this project.'}
+          </div>
+          <StageEditor
+            rows={stageRows}
+            onChange={handleStageChange}
+            currentStage={editing ? form.current_stage : undefined}
+            taskCounts={stageTaskCounts}
+            disabled={saving}
+          />
         </div>
+
+        {saveError && <div className="stage-editor-error">{saveError}</div>}
       </Modal>
 
       <Modal

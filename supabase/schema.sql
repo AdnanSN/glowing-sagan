@@ -58,7 +58,6 @@ create table if not exists projects (
     'Construction Docs', 'Tender', 'Construction', 'Handover'
   ],
   color text not null default '#C8A96E',
-  budget numeric,
   start_date date,
   end_date date,
   description text,

@@ -217,7 +217,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar-logo {
-  padding: var(--space-6) var(--space-6);
+  /* Tighter padding than the nav below it so the mark can grow into the
+     header without pushing the divider down. */
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-light);
   min-height: var(--header-height);
   display: flex;
@@ -228,7 +230,7 @@ h1, h2, h3, h4, h5, h6 {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 48px;
+  max-height: 72px;
   object-fit: contain;
   object-position: left center;
 }

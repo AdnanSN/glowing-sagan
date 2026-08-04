@@ -28,6 +28,8 @@ export const STAGE_COLORS = [
   '#0F7B55',
 ]
 
+// Suggestions, not a fixed set — the type field is free text, so a
+// practice that does something we never listed can just type it.
 export const PROJECT_TYPES = [
   'Residential',
   'Commercial',
@@ -40,6 +42,16 @@ export const PROJECT_TYPES = [
   'Healthcare',
   'Mixed-Use',
 ]
+
+export const DEFAULT_PROJECT_TYPE = PROJECT_TYPES[0]
+
+/**
+ * The list to offer in the type picker: the standard set plus any
+ * custom types already in use, so one typed once is a click after that.
+ */
+export function projectTypeOptions(inUse = []) {
+  return [...new Set([...PROJECT_TYPES, ...inUse.filter(Boolean)])]
+}
 
 export const PROJECT_STATUSES = ['Planning', 'Active', 'Paused', 'Completed', 'Cancelled']
 
