@@ -14,12 +14,14 @@ import {
   projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { StageEditor } from '../components/StageEditor'
+import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
 const EMPTY_FORM = {
   name: '', client: '', project_type: DEFAULT_PROJECT_TYPE, status: 'Active',
   current_stage: 'Briefing', color: PROJECT_COLORS[0],
   start_date: '', end_date: '', description: '', location: '', folder_id: '',
+  is_confidential: false,
 }
 
 // Projects with no folder still have to live somewhere on screen. This
@@ -29,6 +31,9 @@ const UNFILED = '__unfiled__'
 export function Projects() {
   const { hasPermission } = useAuth()
   const canManage = hasPermission('manage_projects')
+  // Principal Architects only. Anyone else is never sent a restricted
+  // row in the first place, so they have nothing to mark or unmark.
+  const canRestrict = hasPermission('manage_confidential')
   const [projects, setProjects] = useState([])
   const [folders, setFolders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -163,11 +168,14 @@ export function Projects() {
   }
 
   // ── Folders ─────────────────────────────────────────────────
-  function newFolder() { setFolderError(''); setFolderModal({ name: '' }) }
+  function newFolder() {
+    setFolderError('')
+    setFolderModal({ name: '', is_confidential: false })
+  }
   function renameFolder(e, folder) {
     e.stopPropagation()
     setFolderError('')
-    setFolderModal({ id: folder.id, name: folder.name })
+    setFolderModal({ id: folder.id, name: folder.name, is_confidential: !!folder.is_confidential })
   }
 
   async function saveFolder() {
@@ -176,10 +184,11 @@ export function Projects() {
     setSaving(true)
     setFolderError('')
 
+    const fields = { name, is_confidential: !!folderModal.is_confidential }
     const { error } = folderModal.id
-      ? await supabase.from('project_folders').update({ name }).eq('id', folderModal.id)
+      ? await supabase.from('project_folders').update(fields).eq('id', folderModal.id)
       : await supabase.from('project_folders')
-          .insert({ name, position: folders.length + 1 })
+          .insert({ ...fields, position: folders.length + 1 })
 
     setSaving(false)
     if (error) {
@@ -261,7 +270,17 @@ export function Projects() {
     }
   }
 
-  const folderName = (id) => folders.find(f => f.id === id)?.name
+  const folderById = (id) => folders.find(f => f.id === id)
+  const folderName = (id) => folderById(id)?.name
+
+  // Why a project is Principal-Architects-only: its own flag, or the
+  // folder it is filed in. null when it is open to the practice.
+  const restrictedBy = (p) =>
+    p.is_confidential ? 'own' : folderById(p.folder_id)?.is_confidential ? 'folder' : null
+
+  // The folder currently picked in the modal already restricts whatever
+  // goes into it, so there is nothing left for the toggle to decide.
+  const inheritsRestriction = !!folderById(form.folder_id)?.is_confidential
 
   // Standard types plus every custom one already in use, so a type
   // somebody typed on one project is a click away on the next.
@@ -397,6 +416,9 @@ export function Projects() {
                         ? 'Empty'
                         : `${inside.length} project${inside.length !== 1 ? 's' : ''}${open ? ` · ${open} open` : ''}`}
                     </div>
+                    {f.is_confidential && (
+                      <div style={{ marginTop: 'var(--space-2)' }}><ConfidentialTag /></div>
+                    )}
                     <div className="folder-card-strip">
                       {inside.slice(0, 12).map(p => (
                         <span key={p.id} className="folder-card-dot"
@@ -471,7 +493,10 @@ export function Projects() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                           <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
                           <div>
-                            <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                              {p.name}
+                              {restrictedBy(p) && <ConfidentialIcon reason={restrictedBy(p)} />}
+                            </div>
                             {p.location && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{p.location}</div>}
                           </div>
                         </div>
@@ -541,6 +566,18 @@ export function Projects() {
             </datalist>
           </div>
         </div>
+
+        {canRestrict && (
+          <div className="form-group">
+            <ConfidentialToggle
+              noun="project"
+              inherited={inheritsRestriction ? 'folder' : null}
+              checked={form.is_confidential}
+              disabled={saving}
+              onChange={v => setForm(f => ({ ...f, is_confidential: v }))}
+            />
+          </div>
+        )}
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">Status</label>
@@ -631,6 +668,17 @@ export function Projects() {
             </div>
           )}
         </div>
+
+        {canRestrict && (
+          <div className="form-group">
+            <ConfidentialToggle
+              noun="folder"
+              checked={folderModal?.is_confidential}
+              disabled={saving}
+              onChange={v => setFolderModal(m => ({ ...m, is_confidential: v }))}
+            />
+          </div>
+        )}
       </Modal>
     </>
   )

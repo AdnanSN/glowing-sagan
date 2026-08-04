@@ -5,6 +5,7 @@ import { Modal } from '../components/Modal'
 import { Plus, Search, CheckSquare } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
 import { Avatar } from '../components/Avatar'
+import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 
@@ -183,7 +184,12 @@ export function Tasks() {
                   return (
                     <div key={task.id} className="kanban-task-card" onClick={() => canManage && openEdit(task)} style={{ cursor: canManage ? 'pointer' : 'default' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-                        <div className="kanban-task-title">{task.title}</div>
+                        <div className="kanban-task-title">
+                          {task.title}
+                          {task.is_confidential && (
+                            <> <ConfidentialIcon size={11} /></>
+                          )}
+                        </div>
                         <div style={{ width: 8, height: 8, background: PRIORITY_COLORS[task.priority], flexShrink: 0, marginTop: 4 }} title={task.priority + ' priority'} />
                       </div>
                       {task.description && (

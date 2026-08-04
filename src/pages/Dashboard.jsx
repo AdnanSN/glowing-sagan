@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
 import { Avatar } from '../components/Avatar'
+import { ConfidentialTag } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { projectStages, PROJECT_COLORS } from '../lib/constants'
 
@@ -154,6 +155,7 @@ export function Dashboard() {
                         </div>
 
                         <div className="project-card-meta">
+                          {project.is_confidential && <ConfidentialTag />}
                           <span className="tag">{project.project_type}</span>
                           <span className="tag" style={{ color: 'var(--text-muted)' }}>
                             <Clock size={11} style={{ marginRight: 3 }} />

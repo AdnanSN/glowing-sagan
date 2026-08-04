@@ -117,6 +117,10 @@ export const ROLE_PERMISSIONS = {
   manage_team:      100,
   manage_settings:  100,
   moderate_comments: 100,
+  // Marking work Principal-Architects-only, and seeing what is marked.
+  // RLS enforces the same rank — this only hides a control that would
+  // be refused anyway.
+  manage_confidential: 100,
   manage_projects:   70,
   delete_projects:   70,
   manage_milestones: 70,

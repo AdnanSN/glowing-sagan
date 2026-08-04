@@ -16,9 +16,10 @@ import {
   projectStages, projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { StageEditor } from '../components/StageEditor'
+import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
-const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '' }
+const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '', is_confidential: false }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
 const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
 
@@ -27,6 +28,8 @@ export function ProjectDetail() {
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const canManage = hasPermission('manage_projects')
+  // Principal Architects only — see Projects.jsx for the same note.
+  const canRestrict = hasPermission('manage_confidential')
 
   const [project, setProject] = useState(null)
   const [tasks, setTasks] = useState([])
@@ -66,7 +69,11 @@ export function ProjectDetail() {
   async function fetchAll() {
     setLoading(true)
     const [p, t, m, d, c, e] = await Promise.all([
-      supabase.from('projects').select('*').eq('id', id).single(),
+      // The folder comes along because it can restrict the project on
+      // its own, and the header and edit modal both have to say so.
+      supabase.from('projects')
+        .select('*, folder:project_folders(id,name,is_confidential)')
+        .eq('id', id).single(),
       supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
@@ -132,6 +139,7 @@ export function ProjectDetail() {
       status: projectForm.status,
       current_stage: projectForm.current_stage,
       color: projectForm.color,
+      is_confidential: !!projectForm.is_confidential,
       start_date: projectForm.start_date || null,
       end_date: projectForm.end_date || null,
       description: projectForm.description || '',
@@ -151,7 +159,22 @@ export function ProjectDetail() {
 
   async function saveTask() {
     setSaving(true)
-    const payload = { ...taskForm, project_id: id, assignee_id: taskForm.assignee_id || null, start_date: taskForm.start_date || null, due_date: taskForm.due_date || null, stage: taskForm.stage || null, updated_at: new Date().toISOString() }
+    // Listed out rather than spread: editing loads the whole task row
+    // into the form, joined `assignee` object and all, and PostgREST
+    // rejects the write if anything that is not a column comes with it.
+    const payload = {
+      project_id: id,
+      title: taskForm.title,
+      description: taskForm.description || '',
+      status: taskForm.status,
+      priority: taskForm.priority,
+      assignee_id: taskForm.assignee_id || null,
+      start_date: taskForm.start_date || null,
+      due_date: taskForm.due_date || null,
+      stage: taskForm.stage || null,
+      is_confidential: !!taskForm.is_confidential,
+      updated_at: new Date().toISOString(),
+    }
     if (editingTask) {
       await supabase.from('tasks').update(payload).eq('id', editingTask.id)
     } else {
@@ -252,6 +275,11 @@ export function ProjectDetail() {
   const stages = projectStages(project)
   const currentStageIdx = stages.indexOf(project.current_stage)
 
+  // Why this project is Principal-Architects-only: its own flag, or the
+  // folder it is filed in. null when it is open to the practice.
+  const projectRestrictedBy =
+    project.is_confidential ? 'own' : project.folder?.is_confidential ? 'folder' : null
+
   // How many tasks carry each stage label, so the editor can warn
   // before a delete strips them.
   const stageTaskCounts = tasks.reduce((acc, t) => {
@@ -303,6 +331,9 @@ export function ProjectDetail() {
                 <div style={{ width: 10, height: 10, background: project.color }} />
                 <span className="page-header-title">{project.name}</span>
                 <span className={`badge ${getStatusColor(project.status)}`}>{project.status}</span>
+                {projectRestrictedBy && (
+                  <ConfidentialTag reason={projectRestrictedBy === 'folder' ? 'folder' : undefined} />
+                )}
               </div>
               <span className="page-header-sub">{project.client} {project.location && `· ${project.location}`}</span>
             </div>
@@ -435,7 +466,10 @@ export function ProjectDetail() {
                               {task.status === 'Done' && <Check size={11} />}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none', color: task.status === 'Done' ? 'var(--text-muted)' : 'var(--text-primary)' }}>{task.title}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', fontWeight: 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none', color: task.status === 'Done' ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                                {task.title}
+                                {task.is_confidential && <ConfidentialIcon />}
+                              </div>
                               {task.description && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 2 }}>{task.description}</div>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
@@ -641,6 +675,19 @@ export function ProjectDetail() {
             {stages.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
+        {canRestrict && (
+          <div className="form-group">
+            <ConfidentialToggle
+              noun="task"
+              // Everything in a restricted project is restricted already;
+              // the per-task flag is only meaningful on an open one.
+              inherited={projectRestrictedBy ? 'project' : null}
+              checked={taskForm.is_confidential}
+              disabled={saving}
+              onChange={v => setTaskForm(f => ({ ...f, is_confidential: v }))}
+            />
+          </div>
+        )}
         {editingTask && canManage && (
           <button className="btn btn-danger btn-sm" style={{ marginTop: 'var(--space-2)' }}
             onClick={() => { closeTaskModal(); deleteTask(editingTask.id) }}>Delete Task</button>
@@ -741,6 +788,17 @@ export function ProjectDetail() {
                 {stages.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
+            {canRestrict && (
+              <div className="form-group">
+                <ConfidentialToggle
+                  noun="project"
+                  inherited={project.folder?.is_confidential ? 'folder' : null}
+                  checked={projectForm.is_confidential}
+                  disabled={saving}
+                  onChange={v => setProjectForm(f => ({ ...f, is_confidential: v }))}
+                />
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Start Date</label>

@@ -3,8 +3,9 @@
 --
 -- For an EXISTING project, do not run this. Run the migrations in
 -- order instead: migration_v2_auth.sql, migration_v3_self_signup.sql,
--- migration_v4_avatars.sql, migration_v5_folders.sql, then
--- migration_v6_project_stages.sql.
+-- migration_v4_avatars.sql, migration_v5_folders.sql,
+-- migration_v6_project_stages.sql, migration_v7_drop_budget.sql, then
+-- migration_v8_confidential.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -32,6 +33,9 @@ create table if not exists project_folders (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   position int not null default 0,          -- display order; ties break on name
+  -- Principal Architects only: hides the folder AND everything filed
+  -- in it from everyone else. Enforced in RLS, see migration_v8.
+  is_confidential boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -58,6 +62,10 @@ create table if not exists projects (
     'Construction Docs', 'Tender', 'Construction', 'Handover'
   ],
   color text not null default '#C8A96E',
+  -- Principal Architects only: hides the project and everything that
+  -- belongs to it. A project in a confidential folder is restricted
+  -- too, whatever this says.
+  is_confidential boolean not null default false,
   start_date date,
   end_date date,
   description text,
@@ -79,6 +87,9 @@ create table if not exists tasks (
   start_date date,
   due_date date,
   stage text,
+  -- Principal Architects only: one task inside an otherwise ordinary
+  -- project.
+  is_confidential boolean not null default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -177,6 +188,36 @@ create or replace function public.is_approved()
 returns boolean language sql stable security definer set search_path = public as $$
   select public.role_rank(public.current_user_role()) > 0;
 $$;
+
+-- Confidential work is Principal Architects (admins) only. These two
+-- answer "is this row restricted" for the policies below; definer so
+-- they can read the parent row without re-entering those policies.
+create or replace function public.folder_is_confidential(p_folder uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select f.is_confidential from public.project_folders f where f.id = p_folder),
+    false
+  );
+$$;
+
+-- Governs everything that belongs to a project. A row with no
+-- project_id is not restricted by association.
+create or replace function public.project_visible(p_project uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin()
+      or p_project is null
+      or exists (
+           select 1 from public.projects pr
+            where pr.id = p_project
+              and not pr.is_confidential
+              and not public.folder_is_confidential(pr.folder_id)
+         );
+$$;
+
+revoke all on function public.folder_is_confidential(uuid) from public, anon;
+revoke all on function public.project_visible(uuid)        from public, anon;
+grant execute on function public.folder_is_confidential(uuid) to authenticated;
+grant execute on function public.project_visible(uuid)        to authenticated;
 
 
 -- ============================================================
@@ -407,41 +448,80 @@ create policy "read employees" on employees for select to authenticated
 create policy "admin write employees" on employees for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
+-- Confidential rows are admin-only throughout: the checks below are
+-- what makes "Principal Architects only" mean it. A non-admin never
+-- receives the row, and cannot flag, unflag or edit one either.
+
 -- PROJECT FOLDERS — manager and above reorganise
 create policy "read project folders" on project_folders for select to authenticated
-  using (public.is_approved());
+  using (public.is_approved() and (public.is_admin() or not is_confidential));
 create policy "manager write project folders" on project_folders for all to authenticated
-  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
+  using      (public.has_min_role('manager') and (public.is_admin() or not is_confidential))
+  with check (public.has_min_role('manager') and (public.is_admin() or not is_confidential));
 
--- PROJECTS — manager and above
+-- PROJECTS — manager and above; restricted in their own right or by folder
 create policy "read projects" on projects for select to authenticated
-  using (public.is_approved());
+  using (
+    public.is_approved() and (
+      public.is_admin()
+      or (not is_confidential and not public.folder_is_confidential(folder_id))
+    )
+  );
 create policy "manager write projects" on projects for all to authenticated
-  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
+  using (
+    public.has_min_role('manager') and (
+      public.is_admin()
+      or (not is_confidential and not public.folder_is_confidential(folder_id))
+    )
+  )
+  with check (
+    public.has_min_role('manager') and (
+      public.is_admin()
+      or (not is_confidential and not public.folder_is_confidential(folder_id))
+    )
+  );
 
--- MILESTONES — manager and above
+-- MILESTONES — manager and above, following their project
 create policy "read milestones" on milestones for select to authenticated
-  using (public.is_approved());
+  using (public.is_approved() and public.project_visible(project_id));
 create policy "manager write milestones" on milestones for all to authenticated
-  using (public.has_min_role('manager')) with check (public.has_min_role('manager'));
+  using      (public.has_min_role('manager') and public.project_visible(project_id))
+  with check (public.has_min_role('manager') and public.project_visible(project_id));
 
--- TASKS — member and above
+-- TASKS — member and above; restricted on their own or by their project
 create policy "read tasks" on tasks for select to authenticated
-  using (public.is_approved());
+  using (
+    public.is_approved() and (
+      public.is_admin()
+      or (not is_confidential and public.project_visible(project_id))
+    )
+  );
 create policy "member write tasks" on tasks for all to authenticated
-  using (public.has_min_role('member')) with check (public.has_min_role('member'));
+  using (
+    public.has_min_role('member') and (
+      public.is_admin()
+      or (not is_confidential and public.project_visible(project_id))
+    )
+  )
+  with check (
+    public.has_min_role('member') and (
+      public.is_admin()
+      or (not is_confidential and public.project_visible(project_id))
+    )
+  );
 
--- DOCUMENTS — member and above
+-- DOCUMENTS — member and above, following their project
 create policy "read documents" on documents for select to authenticated
-  using (public.is_approved());
+  using (public.is_approved() and public.project_visible(project_id));
 create policy "member write documents" on documents for all to authenticated
-  using (public.has_min_role('member')) with check (public.has_min_role('member'));
+  using      (public.has_min_role('member') and public.project_visible(project_id))
+  with check (public.has_min_role('member') and public.project_visible(project_id));
 
 -- COMMENTS — members post, admins moderate
 create policy "read comments" on comments for select to authenticated
-  using (public.is_approved());
+  using (public.is_approved() and public.project_visible(project_id));
 create policy "member insert comments" on comments for insert to authenticated
-  with check (public.has_min_role('member'));
+  with check (public.has_min_role('member') and public.project_visible(project_id));
 create policy "admin manage comments" on comments for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
@@ -557,6 +637,13 @@ declare
 begin
   if not public.has_min_role('manager') then
     raise exception 'Only a project lead or administrator can change stages';
+  end if;
+
+  -- Definer, so RLS does not apply in here — a restricted project has
+  -- to be turned away explicitly. Same wording as a missing id, so it
+  -- does not confirm what exists.
+  if not public.project_visible(p_project) then
+    raise exception 'Project not found';
   end if;
 
   v_count := coalesce(array_length(p_stages, 1), 0);
