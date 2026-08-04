@@ -218,21 +218,26 @@ h1, h2, h3, h4, h5, h6 {
 
 .sidebar-logo {
   /* Tighter padding than the nav below it so the mark can grow into the
-     header without pushing the divider down. */
-  padding: var(--space-3) var(--space-5);
+     header. The header no longer caps it — the block grows to whatever
+     the logo needs, which is why min-height is only a floor. */
+  padding: var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-light);
   min-height: var(--header-height);
   display: flex;
   align-items: center;
+  justify-content: center;
+  /* The nav below scrolls; the logo must not be the thing that gets
+     squeezed when the window is short. */
+  flex-shrink: 0;
 }
 
 .sidebar-logo-img {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 72px;
+  max-height: 110px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
 }
 
 .mobile-logo-img {
