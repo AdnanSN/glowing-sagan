@@ -5,6 +5,7 @@ import { RefreshButton } from '../components/RefreshButton'
 import { Avatar } from '../components/Avatar'
 import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { Modal } from '../components/Modal'
+import { TaskNotesPanel } from '../components/TaskNotesPanel'
 import {
   Users, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, AlertCircle, X,
   GripVertical, ChevronDown, Search,
@@ -15,9 +16,11 @@ import {
 } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 import {
-  SCALES, buildColumns, buildMonthGroups, clamp, dateToX, durationDays,
-  linkStatusAndProgress, pxToDays, rgba, safeDate, toISO, useCompact,
+  SCALES, buildColumns, buildMonthGroups, clamp, dateToCol, dateToX, durationDays,
+  linkStatusAndProgress, markedColumns, pxToDays, rgba, safeDate, toISO,
+  useCompact, xToCol,
 } from '../lib/gantt'
+import { fetchNoteMarks } from '../lib/notes'
 
 /* ────────────────────────────────────────────────────────────────
    TEAM SCHEDULE
@@ -87,6 +90,12 @@ export function GanttTeam() {
   const [saving,     setSaving]     = useState(false)
   const [draggingId, setDraggingId] = useState(null)
 
+  /* The square whose notes are open. Held as dates, not as a column
+     index — this view pages through time, and the panel must keep
+     pointing at the day it was opened on. */
+  const [noteCell,  setNoteCell]  = useState(null)   // { taskId, start, end }
+  const [noteMarks, setNoteMarks] = useState(new Map()) // task id → Set of ISO days
+
   function changeScale(key) {
     setScaleKey(key)
     setCellW(SCALES[key].defaultW)
@@ -98,6 +107,9 @@ export function GanttTeam() {
   useEffect(() => { cellWRef.current = cellW },    [cellW])
   useEffect(() => { unitRef.current  = unitDays }, [unitDays])
   const [dragTip, setDragTip] = useState(null)
+  // Letting go of a bar must not also open the notes for the square the
+  // mouse finished over.
+  const swallowClickRef = useRef(false)
 
   const scrollRef = useRef(null)
 
@@ -115,6 +127,11 @@ export function GanttTeam() {
     setProjects(p.data || [])
     setTasks(t.data || [])
     setLoading(false)
+
+    // Which squares carry a note. No id list: this view spans every
+    // project at once, and RLS already limits what comes back.
+    const { marks } = await fetchNoteMarks()
+    setNoteMarks(marks)
   }
 
   useEffect(() => { fetchAll() }, [])
@@ -272,12 +289,45 @@ export function GanttTeam() {
       const moved = differenceInDays(d.newStart, d.origStart) || differenceInDays(d.newEnd, d.origEnd)
       setTasks(prev => prev.map(t => (t.id === d.id ? { ...t, _tempStart: null, _tempEnd: null } : t)))
       if (!moved) return
+      // Cleared on the next tick, by which time the click that trails
+      // this mouseup has already been swallowed.
+      swallowClickRef.current = true
+      setTimeout(() => { swallowClickRef.current = false }, 0)
       await patchTask(d.id, { start_date: toISO(d.newStart), due_date: toISO(d.newEnd) })
     }
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
+
+  /* ── notes on a square ──
+     Clicking any day of a person's row opens what has been written on
+     that day of that task. The column comes from where the click landed
+     rather than from a grid of cells — eight weeks of days across forty
+     rows would be several thousand divs that exist only to be clicked. */
+  function openCell(task, clientX, rowEl) {
+    if (swallowClickRef.current) return
+    const i = xToCol(clientX - rowEl.getBoundingClientRect().left, cellW)
+    const col = columns[i]
+    if (!col) return
+    setNoteCell({ taskId: task.id, start: col.start, end: col.end })
+  }
+
+  function applyNoteDays(taskId, days) {
+    setNoteMarks(prev => {
+      const next = new Map(prev)
+      if (days.length) next.set(taskId, new Set(days))
+      else next.delete(taskId)
+      return next
+    })
+  }
+
+  /* A filter, or collapsing the person, can take the open task off
+     screen — the panel goes with it rather than sitting there
+     describing a row nobody can see. */
+  const noteTask = noteCell
+    ? rows.find(r => r.type === 'task' && r.task.id === noteCell.taskId)?.task
+    : null
 
   /* A task with only one date still gets a bar — a due date on its own
      is a deadline, and drawing nothing would hide it entirely. */
@@ -392,108 +442,147 @@ export function GanttTeam() {
         </div>
       )}
 
-      {/* ── the chart ── */}
-      <div className="gantt-scroll" ref={scrollRef}>
-        <div className="gantt-canvas" style={{ width: labelW + totalW }}>
+      {/* ── the chart, with the note panel docked beside it ── */}
+      <div className="gantt-body">
+        <div className="gantt-scroll" ref={scrollRef}>
+          <div className="gantt-canvas" style={{ width: labelW + totalW }}>
 
-          <div className="gantt-frozen" style={{ width: labelW }}>
-            <div className="gantt-frozen-head" style={{ height: HEAD_H }}>
-              {cols.map(c => (
-                <div key={c.key} className={`gantt-cell gantt-head-cell gantt-cell-${c.key}`} style={{ width: c.w }}>
-                  {c.label}
-                </div>
-              ))}
-            </div>
-
-            {rows.map(row => (
-              <TeamLabelRow
-                key={row.id}
-                row={row}
-                cols={cols}
-                height={rowHeight(row)}
-                collapsed={collapsed.has(row.group.key)}
-                onToggle={() => toggleGroup(row.group.key)}
-                onOpen={openDialog}
-                canEdit={canEdit}
-              />
-            ))}
-
-            {!rows.length && (
-              <div className="gantt-row gantt-row-empty" style={{ height: ROW_H.empty, width: labelW }}>
-                <span className="gantt-empty-note">Nothing matches these filters.</span>
-              </div>
-            )}
-          </div>
-
-          <div className="gantt-chart" style={{ width: totalW }}>
-            <div className="gantt-chart-head" style={{ height: HEAD_H }}>
-              <div className="gantt-month-row" style={{ height: HEAD_MONTH_H }}>
-                {monthGroups.map(m => (
-                  <div key={m.key} className="gantt-month-cell" style={{ width: m.span * cellW }}>
-                    {m.label} <span className="gantt-month-year">{m.year}</span>
+            <div className="gantt-frozen" style={{ width: labelW }}>
+              <div className="gantt-frozen-head" style={{ height: HEAD_H }}>
+                {cols.map(c => (
+                  <div key={c.key} className={`gantt-cell gantt-head-cell gantt-cell-${c.key}`} style={{ width: c.w }}>
+                    {c.label}
                   </div>
                 ))}
               </div>
-              <div className="gantt-col-row" style={{ height: HEAD_COL_H }}>
-                {columns.map((col, i) => {
-                  const weekend = unitDays === 1 && isWeekend(col.start)
-                  const today = unitDays === 1
-                    ? isToday(col.start)
-                    : (new Date() >= col.start && new Date() <= addDays(col.end, 1))
-                  return (
+
+              {rows.map(row => (
+                <TeamLabelRow
+                  key={row.id}
+                  row={row}
+                  cols={cols}
+                  height={rowHeight(row)}
+                  collapsed={collapsed.has(row.group.key)}
+                  onToggle={() => toggleGroup(row.group.key)}
+                  onOpen={openDialog}
+                  canEdit={canEdit}
+                />
+              ))}
+
+              {!rows.length && (
+                <div className="gantt-row gantt-row-empty" style={{ height: ROW_H.empty, width: labelW }}>
+                  <span className="gantt-empty-note">Nothing matches these filters.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="gantt-chart" style={{ width: totalW }}>
+              <div className="gantt-chart-head" style={{ height: HEAD_H }}>
+                <div className="gantt-month-row" style={{ height: HEAD_MONTH_H }}>
+                  {monthGroups.map(m => (
+                    <div key={m.key} className="gantt-month-cell" style={{ width: m.span * cellW }}>
+                      {m.label} <span className="gantt-month-year">{m.year}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="gantt-col-row" style={{ height: HEAD_COL_H }}>
+                  {columns.map((col, i) => {
+                    const weekend = unitDays === 1 && isWeekend(col.start)
+                    const today = unitDays === 1
+                      ? isToday(col.start)
+                      : (new Date() >= col.start && new Date() <= addDays(col.end, 1))
+                    return (
+                      <div key={i}
+                        className={`gantt-col-cell${weekend ? ' weekend' : ''}${today ? ' today' : ''}`}
+                        style={{ width: cellW }}>
+                        {unitDays === 1 ? (
+                          <>
+                            <span className="gantt-col-dow">{format(col.start, 'EEEEE')}</span>
+                            <span className="gantt-col-num">{format(col.start, 'd')}</span>
+                          </>
+                        ) : (
+                          <span className="gantt-col-num">{format(col.start, 'd MMM')}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="gantt-chart-body">
+                <div className="gantt-gridlines">
+                  {columns.map((col, i) => (
                     <div key={i}
-                      className={`gantt-col-cell${weekend ? ' weekend' : ''}${today ? ' today' : ''}`}
-                      style={{ width: cellW }}>
-                      {unitDays === 1 ? (
-                        <>
-                          <span className="gantt-col-dow">{format(col.start, 'EEEEE')}</span>
-                          <span className="gantt-col-num">{format(col.start, 'd')}</span>
-                        </>
-                      ) : (
-                        <span className="gantt-col-num">{format(col.start, 'd MMM')}</span>
+                      className={`gantt-gridline${unitDays === 1 && isWeekend(col.start) ? ' weekend' : ''}`}
+                      style={{ left: i * cellW, width: cellW }} />
+                  ))}
+                </div>
+                {todayInView && <div className="gantt-today-line" style={{ left: todayX }} />}
+
+                {rows.map(row => {
+                  if (row.type === 'member') {
+                    return <div key={row.id} className="gantt-row gantt-row-member" style={{ height: rowHeight(row) }} />
+                  }
+                  const task = row.task
+                  const geo = taskGeom(task)
+                  const marked = markedColumns(noteMarks.get(task.id), range.start, unitDays, columns.length)
+                  const picked = noteCell?.taskId === task.id
+                    ? dateToCol(noteCell.start, range.start, unitDays)
+                    : -1
+
+                  /* The whole row is the target, bar included — the day
+                     under the pointer is worked out from where the
+                     click landed. */
+                  return (
+                    <div
+                      key={row.id}
+                      className="gantt-row gantt-row-task"
+                      style={{ height: rowHeight(row) }}
+                      onClick={e => openCell(task, e.clientX, e.currentTarget)}
+                    >
+                      {picked >= 0 && picked < columns.length && (
+                        <div className="gantt-cell-pick" style={{ left: picked * cellW, width: cellW }} />
                       )}
+
+                      {geo && (
+                        <TeamBar
+                          task={task}
+                          geo={geo}
+                          height={rowHeight(row)}
+                          dragging={draggingId === task.id}
+                          editable={canEdit}
+                          onDrag={beginDrag}
+                          onOpen={openDialog}
+                        />
+                      )}
+
+                      {/* A corner fold on any square that has been
+                          written on — otherwise a note is only findable
+                          by opening every day of the bar. */}
+                      {marked.map(col => (
+                        <span key={col} className="gantt-note-mark"
+                          style={{ left: col * cellW + cellW - 7 }} />
+                      ))}
                     </div>
                   )
                 })}
+
+                {!rows.length && <div className="gantt-row" style={{ height: ROW_H.empty }} />}
               </div>
-            </div>
-
-            <div className="gantt-chart-body">
-              <div className="gantt-gridlines">
-                {columns.map((col, i) => (
-                  <div key={i}
-                    className={`gantt-gridline${unitDays === 1 && isWeekend(col.start) ? ' weekend' : ''}`}
-                    style={{ left: i * cellW, width: cellW }} />
-                ))}
-              </div>
-              {todayInView && <div className="gantt-today-line" style={{ left: todayX }} />}
-
-              {rows.map(row => {
-                if (row.type === 'member') {
-                  return <div key={row.id} className="gantt-row gantt-row-member" style={{ height: rowHeight(row) }} />
-                }
-                const geo = taskGeom(row.task)
-                return (
-                  <div key={row.id} className="gantt-row gantt-row-task" style={{ height: rowHeight(row) }}>
-                    {geo && (
-                      <TeamBar
-                        task={row.task}
-                        geo={geo}
-                        height={rowHeight(row)}
-                        dragging={draggingId === row.task.id}
-                        editable={canEdit}
-                        onDrag={beginDrag}
-                        onOpen={openDialog}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-
-              {!rows.length && <div className="gantt-row" style={{ height: ROW_H.empty }} />}
             </div>
           </div>
         </div>
+
+        {noteTask && (
+          <TaskNotesPanel
+            key={noteTask.id}
+            task={noteTask}
+            cell={noteCell}
+            subtitle={noteTask.project?.name}
+            onClose={() => setNoteCell(null)}
+            onNotesChanged={applyNoteDays}
+          />
+        )}
       </div>
 
       {dragTip && (

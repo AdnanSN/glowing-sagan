@@ -3723,6 +3723,221 @@ h1, h2, h3, h4, h5, h6 {
 .gantt-due { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .gantt-due-overdue { color: var(--danger); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 
+/* ── notes on a square ──
+   Click a day on a line item and its notes open beside the chart.
+   Docked rather than modal: the reason to write a note is that you are
+   reading the chart, and a dialog over the top of it would have to be
+   closed to look at the next square. */
+.gantt-body { display: flex; flex: 1; min-height: 0; }
+.gantt-body .gantt-scroll { min-width: 0; }
+
+/* Every day of a line is a target, so say so. */
+.gantt-chart-body .gantt-row-task { cursor: pointer; }
+
+/* The square the panel is showing. Under the bar rather than over it —
+   the bar's fill is semi-transparent, so the day it covers tints
+   through instead of being painted out. */
+.gantt-cell-pick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  background: rgba(0, 65, 194, 0.1);
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+  pointer-events: none;
+}
+
+/* The spreadsheet's corner fold, on any day that has been written on —
+   without it a note is only findable by opening every square of a
+   six-week bar. Above the bar, and click-through, so the square
+   underneath still opens. */
+.gantt-note-mark {
+  position: absolute;
+  top: 1px;
+  z-index: 6;
+  width: 0;
+  height: 0;
+  border-top: 7px solid var(--accent-primary);
+  border-left: 7px solid transparent;
+  pointer-events: none;
+}
+
+.gantt-notes {
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  flex-shrink: 0;
+  min-height: 0;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-medium);
+}
+
+.gantt-notes-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.gantt-notes-head-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.gantt-notes-task {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-notes-day {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs);
+  color: var(--accent-primary);
+}
+.gantt-notes-sub {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-notes-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.gantt-notes-compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.gantt-notes-input {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border-medium);
+  background: var(--bg-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+.gantt-notes-input:focus { border-color: var(--accent-primary); }
+.gantt-notes-compose-row { display: flex; align-items: center; gap: var(--space-2); }
+.gantt-notes-date {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  outline: none;
+}
+
+.gantt-notes-list { flex: 1; overflow-y: auto; padding: var(--space-2) 0; }
+.gantt-notes-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.gantt-note { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-light); }
+.gantt-note:last-child { border-bottom: none; }
+.gantt-note-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 6px; }
+.gantt-note-author {
+  font-size: var(--text-xs);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-note-when { font-size: 10px; color: var(--text-muted); white-space: nowrap; flex: 1; }
+.gantt-note-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.gantt-note-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+.gantt-note:hover .gantt-note-actions { opacity: 1; }
+.gantt-note-btn {
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.gantt-note-btn:hover { color: var(--text-primary); }
+.gantt-note-btn.danger:hover { color: var(--danger); }
+
+.gantt-note-body {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--text-primary);
+  /* A note is typed, not authored — the line breaks somebody put in are
+     the structure it has. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gantt-note-edit { display: flex; flex-direction: column; gap: var(--space-2); }
+.gantt-note-edit-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+.gantt-notes-scope {
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.gantt-notes-scope:hover { background: var(--accent-light); }
+.gantt-notes-foot {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-light);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* A laptop has no room for both the frozen columns and a 340px panel. */
+@media (max-width: 1080px) {
+  .gantt-notes { width: 300px; }
+}
+
 /* Below 768px the sidebar folds away and a 60px topbar takes its place. */
 @media (max-width: 768px) {
   .gantt-page { height: calc(100vh - 60px); }
@@ -3732,6 +3947,18 @@ h1, h2, h3, h4, h5, h6 {
   .gantt-sheet-summary { padding-left: 0; border-left: none; }
   .gantt-project-select { width: 100%; }
   .gantt-search-input { width: 110px; }
+
+  /* On a phone there is nothing to dock beside, so the panel takes the
+     screen instead — under the topbar, which is how you get back. */
+  .gantt-notes {
+    position: fixed;
+    top: 60px;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    width: min(360px, 100%);
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.12);
+  }
 }
 
 /* ===========================

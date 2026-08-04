@@ -110,6 +110,36 @@ create table if not exists tasks (
 create index if not exists tasks_project_stage_position_idx
   on tasks (project_id, stage, position);
 
+-- TASK NOTES (what happened on one day of one line item — written by
+-- clicking that square on either timeline chart. See
+-- migration_v11_task_notes.sql for the reasoning; the short version is
+-- that a line runs for weeks and "the steel is late" is about a
+-- Tuesday, so the day is part of the key rather than a timestamp on a
+-- flat comment list.)
+create table if not exists task_notes (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  -- The square this was written on. Deliberately not constrained to the
+  -- task's own dates: bars move, and a note stays on the day it is
+  -- about.
+  note_date date not null,
+  body text not null,
+  author_id   uuid references employees(id) on delete set null,
+  -- A snapshot, not a join — a note should still say who wrote it after
+  -- the employee row is archived.
+  author_name text,
+  -- Ownership for editing: the login rather than the employee row, so
+  -- somebody not yet linked to an employee can still edit what they
+  -- just wrote.
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint task_notes_body_not_blank check (length(btrim(body)) > 0)
+);
+
+create index if not exists task_notes_task_date_idx
+  on task_notes (task_id, note_date, created_at);
+
 -- MILESTONES
 create table if not exists milestones (
   id uuid primary key default gen_random_uuid(),
@@ -272,6 +302,25 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- Governs a task's notes. Not the same question as project_visible():
+-- a task carries its own is_confidential, so this mirrors the "read
+-- tasks" policy below clause for clause. Definer so it can read `tasks`
+-- without re-entering that table's own RLS.
+create or replace function public.task_visible(p_task uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.tasks t
+     where t.id = p_task
+       and (
+         public.is_admin()
+         or (not t.is_confidential and public.project_visible(t.project_id))
+       )
+  );
+$$;
+
+revoke all on function public.task_visible(uuid) from public, anon;
+grant execute on function public.task_visible(uuid) to authenticated;
+
 -- Storage object names carry ids in their first path segment; a
 -- malformed path must fail the policy rather than raise a cast error.
 create or replace function public.try_uuid(t text)
@@ -420,6 +469,10 @@ drop trigger if exists profiles_touch_updated_at on profiles;
 create trigger profiles_touch_updated_at before update on profiles
   for each row execute function public.touch_updated_at();
 
+drop trigger if exists task_notes_touch_updated_at on task_notes;
+create trigger task_notes_touch_updated_at before update on task_notes
+  for each row execute function public.touch_updated_at();
+
 -- Mirror profiles.employee_id into employees.auth_user_id.
 create or replace function public.sync_employee_link()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -485,6 +538,7 @@ alter table employees       enable row level security;
 alter table project_folders enable row level security;
 alter table projects   enable row level security;
 alter table tasks      enable row level security;
+alter table task_notes enable row level security;
 alter table milestones enable row level security;
 alter table documents   enable row level security;
 alter table site_photos enable row level security;
@@ -573,6 +627,27 @@ create policy "member write tasks" on tasks for all to authenticated
       or (not is_confidential and public.project_visible(project_id))
     )
   );
+
+-- TASK NOTES — reading follows the task. Writing is member and above,
+-- the same rung that may edit the task itself. Editing is your own
+-- only, including for admins: rewriting somebody else's note silently
+-- is worse than deleting it, which at least leaves a hole. Deleting is
+-- your own or a project lead, the same shape as site photos.
+create policy "read task notes" on task_notes for select to authenticated
+  using (public.is_approved() and public.task_visible(task_id));
+create policy "member add task notes" on task_notes for insert to authenticated
+  with check (
+    public.has_min_role('member')
+    and public.task_visible(task_id)
+    and created_by = auth.uid()                              -- post as yourself only
+    and (author_id is null or public.owns_employee(author_id))
+  );
+create policy "edit own task notes" on task_notes for update to authenticated
+  using      (public.task_visible(task_id) and created_by = auth.uid())
+  with check (public.task_visible(task_id) and created_by = auth.uid());
+create policy "delete own task notes" on task_notes for delete to authenticated
+  using (public.task_visible(task_id)
+         and (public.has_min_role('manager') or created_by = auth.uid()));
 
 -- DOCUMENTS — member and above, following their project
 create policy "read documents" on documents for select to authenticated

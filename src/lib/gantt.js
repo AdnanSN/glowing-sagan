@@ -61,6 +61,39 @@ export function pxToDays(px, cellW, unitDays) {
   return Math.round((px / cellW) * unitDays)
 }
 
+/**
+ * Which column a date falls in — the square you would point at. Whole
+ * columns, unlike dateToX: a note written on the Wednesday of a week
+ * column belongs to that column, not to three sevenths across it.
+ * Negative, or past the last column, when the date is off the chart.
+ */
+export function dateToCol(date, rangeStart, unitDays) {
+  return Math.floor(differenceInDays(date, rangeStart) / unitDays)
+}
+
+/** Where a click landed, as a column index. */
+export function xToCol(px, cellW) {
+  return Math.floor(px / cellW)
+}
+
+/**
+ * The columns to put a note marker on, from the days that carry one.
+ * Deduplicated, because a week column holding three annotated days is
+ * still one square, and clipped to the chart, because the Team Schedule
+ * shows a rolling window with notes either side of it.
+ */
+export function markedColumns(days, rangeStart, unitDays, colCount) {
+  if (!days?.size) return []
+  const cols = new Set()
+  days.forEach(iso => {
+    const d = safeDate(iso)
+    if (!d) return
+    const col = dateToCol(d, rangeStart, unitDays)
+    if (col >= 0 && col < colCount) cols.add(col)
+  })
+  return [...cols]
+}
+
 /** One entry per column — a single day, or the week starting that day. */
 export function buildColumns(rangeStart, rangeEnd, unitDays) {
   const cols = []

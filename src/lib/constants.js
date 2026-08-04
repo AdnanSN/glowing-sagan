@@ -131,6 +131,13 @@ export const ROLE_PERMISSIONS = {
   // is evidence. RLS enforces both — see migration_v10_site_photos.sql.
   add_site_photos:   40,
   delete_any_photo:  70,
+  // Notes written on a square of the timeline. Writing sits on the same
+  // rung as editing the task itself; a note is part of how the work is
+  // recorded. Editing is always your own note only — RLS allows nobody,
+  // admins included, to silently rewrite someone else's — while a
+  // project lead may delete one. See migration_v11_task_notes.sql.
+  add_task_notes:    40,
+  delete_any_note:   70,
   post_comments:     40,
   view_all:          10,
 }
