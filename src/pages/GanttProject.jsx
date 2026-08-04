@@ -63,6 +63,7 @@ export function GanttProject() {
   const labelW  = cols.reduce((sum, c) => sum + c.w, 0)
 
   const [projects,   setProjects]   = useState([])
+  const [employees,  setEmployees]  = useState([])
   const [chosenId,   setChosenId]   = useState(() => localStorage.getItem('nhn.timeline.project') || '')
   const [tasks,      setTasks]      = useState([])
   const [milestones, setMilestones] = useState([])
@@ -116,6 +117,12 @@ export function GanttProject() {
     setLoading(false)
   }
 
+  async function fetchEmployees() {
+    const { data } = await supabase.from('employees')
+      .select('id,name,role,color,avatar_url').order('name')
+    setEmployees(data || [])
+  }
+
   async function fetchRows(id) {
     if (!id) { setTasks([]); setMilestones([]); return }
     setLoadingRows(true)
@@ -130,7 +137,7 @@ export function GanttProject() {
     setLoadingRows(false)
   }
 
-  useEffect(() => { fetchProjects() }, [])
+  useEffect(() => { fetchProjects(); fetchEmployees() }, [])
 
   useEffect(() => {
     if (!projectId) return
@@ -228,7 +235,16 @@ export function GanttProject() {
   async function patchTask(id, patch) {
     const current = tasks.find(t => t.id === id)
     const full = linkStatusAndProgress(patch, current)
-    setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...full } : t)))
+
+    // `assignee` is the joined row the bar draws its face from; the
+    // column that actually moves is assignee_id. Resolve the join here
+    // so the avatar changes with the save rather than on the next load
+    // — and keep it out of the payload, since it is not a column.
+    const local = 'assignee_id' in full
+      ? { ...full, assignee: employees.find(e => e.id === full.assignee_id) || null }
+      : full
+
+    setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...local } : t)))
     const { error: err } = await supabase.from('tasks')
       .update({ ...full, updated_at: new Date().toISOString() }).eq('id', id)
     if (err) { setError(err.message); fetchRows(projectId) }
@@ -294,11 +310,22 @@ export function GanttProject() {
     if (err) { setError(err.message); fetchRows(projectId) }
   }
 
+  function openRow(task) {
+    setEditRow({
+      ...task,
+      assignee_id: task.assignee_id || '',
+      start_date: task.start_date || '',
+      due_date: task.due_date || '',
+      progress: task.progress ?? 0,
+    })
+  }
+
   async function saveDialog() {
     if (!editRow) return
     setSaving(true)
     await patchTask(editRow.id, {
       title: editRow.title,
+      assignee_id: editRow.assignee_id || null,
       start_date: editRow.start_date || null,
       due_date: editRow.due_date || null,
       status: editRow.status,
@@ -494,12 +521,7 @@ export function GanttProject() {
                 onDeleteMilestone={deleteMilestone}
                 onAddTask={addTask}
                 onAddMilestone={addMilestone}
-                onOpen={task => setEditRow({
-                  ...task,
-                  start_date: task.start_date || '',
-                  due_date: task.due_date || '',
-                  progress: task.progress ?? 0,
-                })}
+                onOpen={openRow}
               />
             ))}
           </div>
@@ -567,12 +589,7 @@ export function GanttProject() {
                   draggingId={draggingId}
                   canEditTasks={canEditTasks}
                   onDrag={beginDrag}
-                  onOpen={task => setEditRow({
-                    ...task,
-                    start_date: task.start_date || '',
-                    due_date: task.due_date || '',
-                    progress: task.progress ?? 0,
-                  })}
+                  onOpen={openRow}
                 />
               ))}
 
@@ -612,6 +629,18 @@ export function GanttProject() {
               <label className="form-label">Task Title *</label>
               <input className="form-input" value={editRow.title}
                 onChange={e => setEditRow(r => ({ ...r, title: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Assigned To</label>
+              <select className="form-select" value={editRow.assignee_id}
+                onChange={e => setEditRow(r => ({ ...r, assignee_id: e.target.value }))}>
+                <option value="">— Unassigned —</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name}{emp.role ? ` · ${emp.role}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -1048,7 +1077,12 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
         borderColor: rgba(done ? '#0F7B55' : color, overdue ? 0.9 : 0.6),
         cursor: editable ? (dragging ? 'grabbing' : 'grab') : 'default',
       }}
-      title={`${task.title}\n${format(geo.start, 'd MMM yyyy')} → ${format(geo.end, 'd MMM yyyy')}\n${pct}% complete · ${task.status}`}
+      title={[
+        task.title,
+        `${format(geo.start, 'd MMM yyyy')} → ${format(geo.end, 'd MMM yyyy')}`,
+        `${pct}% complete · ${task.status}`,
+        task.assignee ? `Assigned to ${task.assignee.name}` : 'Unassigned',
+      ].join('\n')}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onMouseDown={e => editable && onDrag(e, task, 'move', geo.start, geo.end)}
