@@ -63,6 +63,17 @@ const notConfigured = () =>
 const stub = {
   from: () => makeFrom(),
   rpc: () => notConfigured(),
+  // Site photos sign their URLs on page load rather than on a click, so
+  // this has to answer rather than be undefined.
+  storage: {
+    from: () => ({
+      upload: notConfigured,
+      remove: notConfigured,
+      list: () => Promise.resolve({ data: [], error: null }),
+      createSignedUrls: () => Promise.resolve({ data: [], error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: '' } }),
+    }),
+  },
   auth: {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signInWithPassword: notConfigured,

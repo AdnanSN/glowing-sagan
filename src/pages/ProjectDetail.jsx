@@ -16,6 +16,7 @@ import {
   projectStages, projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { StageEditor } from '../components/StageEditor'
+import { SitePhotos } from '../components/SitePhotos'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
@@ -35,6 +36,9 @@ export function ProjectDetail() {
   const [tasks, setTasks] = useState([])
   const [milestones, setMilestones] = useState([])
   const [documents, setDocuments] = useState([])
+  // Only the number — the photos themselves load with their tab, so an
+  // unopened tab never signs a URL or pulls a thumbnail.
+  const [photoCount, setPhotoCount] = useState(0)
   const [comments, setComments] = useState([])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
@@ -68,7 +72,7 @@ export function ProjectDetail() {
 
   async function fetchAll() {
     setLoading(true)
-    const [p, t, m, d, c, e] = await Promise.all([
+    const [p, t, m, d, c, e, ph] = await Promise.all([
       // The folder comes along because it can restrict the project on
       // its own, and the header and edit modal both have to say so.
       supabase.from('projects')
@@ -79,6 +83,8 @@ export function ProjectDetail() {
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('comments').select('*').eq('project_id', id).order('created_at'),
       supabase.from('employees').select('*').order('name'),
+      // head:true — the tab label needs the count, nothing else does.
+      supabase.from('site_photos').select('id', { count: 'exact', head: true }).eq('project_id', id),
     ])
     if (!p.data) { navigate('/projects'); return }
     setProject(p.data)
@@ -87,6 +93,7 @@ export function ProjectDetail() {
     setDocuments(d.data || [])
     setComments(c.data || [])
     setEmployees(e.data || [])
+    setPhotoCount(ph.count || 0)
     setLoading(false)
   }
 
@@ -423,6 +430,7 @@ export function ProjectDetail() {
           {[
             { key: 'tasks', label: `Tasks (${tasks.length})` },
             { key: 'milestones', label: `Milestones (${milestones.length})` },
+            { key: 'photos', label: `Site Photos (${photoCount})` },
             { key: 'documents', label: `Documents (${documents.length})` },
             { key: 'comments', label: `Notes (${comments.length})` },
           ].map(tab => (
@@ -540,6 +548,16 @@ export function ProjectDetail() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ===== SITE PHOTOS TAB ===== */}
+        {activeTab === 'photos' && (
+          <SitePhotos
+            projectId={id}
+            stages={stages}
+            currentStage={project.current_stage}
+            onCountChange={setPhotoCount}
+          />
         )}
 
         {/* ===== DOCUMENTS TAB ===== */}

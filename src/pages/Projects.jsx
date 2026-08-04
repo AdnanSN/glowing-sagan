@@ -16,6 +16,7 @@ import {
 import { StageEditor } from '../components/StageEditor'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
+import { deleteProjectPhotos } from '../lib/photos'
 
 const EMPTY_FORM = {
   name: '', client: '', project_type: DEFAULT_PROJECT_TYPE, status: 'Active',
@@ -119,6 +120,12 @@ export function Projects() {
   async function handleDelete(e, id) {
     e.stopPropagation()
     if (!confirm('Delete this project? All associated data will be removed.')) return
+    // Site photos go first, and deliberately before the project row.
+    // The cascade removes the site_photos rows but cannot reach into
+    // storage, and the storage policy needs those rows to decide the
+    // caller may remove the objects — do it after and they sit in the
+    // quota forever, invisible and unreferenced.
+    await deleteProjectPhotos(id)
     await supabase.from('projects').delete().eq('id', id)
     fetchAll()
   }

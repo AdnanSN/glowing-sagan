@@ -5,7 +5,8 @@
 -- order instead: migration_v2_auth.sql, migration_v3_self_signup.sql,
 -- migration_v4_avatars.sql, migration_v5_folders.sql,
 -- migration_v6_project_stages.sql, migration_v7_drop_budget.sql,
--- migration_v8_confidential.sql, then migration_v9_gantt.sql.
+-- migration_v8_confidential.sql, migration_v9_gantt.sql, then
+-- migration_v10_site_photos.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -131,6 +132,33 @@ create table if not exists documents (
   created_at timestamptz default now()
 );
 
+-- SITE PHOTOS (what the job actually looks like — taken on a phone,
+-- standing in the building. See migration_v10_site_photos.sql for the
+-- full reasoning; the short version is that the browser ships a 2048px
+-- WebP plus a 480px thumbnail and the raw camera file never leaves the
+-- phone, and that the bucket is private because a confidential project
+-- must not leak its photos to whoever is holding the URL.)
+create table if not exists site_photos (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  -- Both objects live under <project_id>/ in the `site-photos` bucket,
+  -- so one path segment tells the storage policies which project they
+  -- have to check.
+  storage_path text not null unique,
+  thumb_path   text not null,
+  caption text,
+  stage text,                               -- matches projects.stages, like tasks.stage
+  taken_at timestamptz,                     -- from the file where the phone gave us one
+  bytes  int,                               -- full derivative, for the quota readout
+  width  int,
+  height int,
+  uploaded_by uuid references employees(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists site_photos_project_taken_idx
+  on site_photos (project_id, taken_at desc, created_at desc);
+
 -- COMMENTS
 create table if not exists comments (
   id uuid primary key default gen_random_uuid(),
@@ -233,6 +261,26 @@ revoke all on function public.folder_is_confidential(uuid) from public, anon;
 revoke all on function public.project_visible(uuid)        from public, anon;
 grant execute on function public.folder_is_confidential(uuid) to authenticated;
 grant execute on function public.project_visible(uuid)        to authenticated;
+
+-- "Is this employee row me?" Used by the site-photo policies below and
+-- by the storage policies at the bottom of this file. Definer so it can
+-- read `employees` without tripping that table's own RLS.
+create or replace function public.owns_employee(emp uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select emp is not null and exists (
+    select 1 from public.employees where id = emp and auth_user_id = auth.uid()
+  );
+$$;
+
+-- Storage object names carry ids in their first path segment; a
+-- malformed path must fail the policy rather than raise a cast error.
+create or replace function public.try_uuid(t text)
+returns uuid language plpgsql immutable as $$
+begin
+  return t::uuid;
+exception when others then
+  return null;
+end$$;
 
 
 -- ============================================================
@@ -438,8 +486,9 @@ alter table project_folders enable row level security;
 alter table projects   enable row level security;
 alter table tasks      enable row level security;
 alter table milestones enable row level security;
-alter table documents  enable row level security;
-alter table comments   enable row level security;
+alter table documents   enable row level security;
+alter table site_photos enable row level security;
+alter table comments    enable row level security;
 alter table profiles   enable row level security;
 
 -- PROFILES — no INSERT policy on purpose: rows only ever come from
@@ -532,6 +581,23 @@ create policy "member write documents" on documents for all to authenticated
   using      (public.has_min_role('member') and public.project_visible(project_id))
   with check (public.has_min_role('member') and public.project_visible(project_id));
 
+-- SITE PHOTOS — read follows the project, adding is member and above
+-- (the same rung as documents). Removing is deliberately narrower:
+-- your own upload, or a project lead. A site record is evidence, and
+-- one person should not be able to quietly drop somebody else's.
+create policy "read site photos" on site_photos for select to authenticated
+  using (public.is_approved() and public.project_visible(project_id));
+create policy "member add site photos" on site_photos for insert to authenticated
+  with check (public.has_min_role('member') and public.project_visible(project_id));
+create policy "edit own site photos" on site_photos for update to authenticated
+  using      (public.project_visible(project_id)
+              and (public.has_min_role('manager') or public.owns_employee(uploaded_by)))
+  with check (public.project_visible(project_id)
+              and (public.has_min_role('manager') or public.owns_employee(uploaded_by)));
+create policy "delete own site photos" on site_photos for delete to authenticated
+  using (public.project_visible(project_id)
+         and (public.has_min_role('manager') or public.owns_employee(uploaded_by)));
+
 -- COMMENTS — members post, admins moderate
 create policy "read comments" on comments for select to authenticated
   using (public.is_approved() and public.project_visible(project_id));
@@ -549,22 +615,9 @@ create policy "admin manage comments" on comments for all to authenticated
 -- 256px WebP square first (src/lib/avatar.js) — ~5–10 KB each.
 -- ============================================================
 
--- The first path segment is an employee id; a malformed path must
--- fail the policy rather than raise a cast error.
-create or replace function public.try_uuid(t text)
-returns uuid language plpgsql immutable as $$
-begin
-  return t::uuid;
-exception when others then
-  return null;
-end$$;
-
-create or replace function public.owns_employee(emp uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select emp is not null and exists (
-    select 1 from public.employees where id = emp and auth_user_id = auth.uid()
-  );
-$$;
+-- try_uuid() and owns_employee(), which the policies below are written
+-- in terms of, are defined up in AUTHORIZATION HELPERS — the site-photo
+-- policies need them too, and those are created before this section.
 
 -- 512 KB / image mimes is a backstop against someone bypassing the
 -- app and parking a raw camera file in the quota.
@@ -632,6 +685,74 @@ end$$;
 
 revoke all on function public.set_my_avatar(text) from public, anon;
 grant execute on function public.set_my_avatar(text) to authenticated;
+
+
+-- ============================================================
+-- STORAGE — site photos
+-- Private, unlike `avatars`: a confidential project must not hand its
+-- photos to whoever is holding the URL. Nothing is served without a
+-- signed URL, and the policies below decide who may be given one.
+-- Every object sits at site-photos/<project_id>/<key>, so the first
+-- path segment is what they key off — and a path that does not start
+-- with a real uuid is refused outright, because project_visible(null)
+-- is true by design and would otherwise wave it through.
+--
+-- The browser ships a 2048px WebP (capped at 700 KB) plus a 480px
+-- thumbnail; the raw camera file never leaves the phone. 1.5 MB / image
+-- mimes is a backstop against someone bypassing the app.
+-- ============================================================
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('site-photos', 'site-photos', false, 1572864, array['image/webp', 'image/jpeg'])
+on conflict (id) do update set
+  public = false, file_size_limit = 1572864,
+  allowed_mime_types = array['image/webp', 'image/jpeg'];
+
+create or replace function public.site_photo_project(objname text)
+returns uuid language sql immutable set search_path = public as $$
+  select public.try_uuid((storage.foldername(objname))[1]);
+$$;
+
+-- Removing an object: a project lead, or whoever uploaded the photo it
+-- belongs to. The app deletes objects BEFORE the row, so the row is
+-- still there to be asked.
+create or replace function public.can_remove_site_photo(objname text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.has_min_role('manager')
+      or exists (
+           select 1 from public.site_photos sp
+            where (sp.storage_path = objname or sp.thumb_path = objname)
+              and public.owns_employee(sp.uploaded_by)
+         );
+$$;
+
+revoke all on function public.site_photo_project(text)    from public, anon;
+revoke all on function public.can_remove_site_photo(text) from public, anon;
+grant execute on function public.site_photo_project(text)    to authenticated;
+grant execute on function public.can_remove_site_photo(text) to authenticated;
+
+drop policy if exists "read site photo objects" on storage.objects;
+create policy "read site photo objects" on storage.objects for select to authenticated
+using (bucket_id = 'site-photos' and public.is_approved()
+  and public.site_photo_project(name) is not null
+  and public.project_visible(public.site_photo_project(name)));
+
+drop policy if exists "upload site photo objects" on storage.objects;
+create policy "upload site photo objects" on storage.objects for insert to authenticated
+with check (bucket_id = 'site-photos' and public.has_min_role('member')
+  and public.site_photo_project(name) is not null
+  and public.project_visible(public.site_photo_project(name)));
+
+drop policy if exists "delete site photo objects" on storage.objects;
+create policy "delete site photo objects" on storage.objects for delete to authenticated
+using (bucket_id = 'site-photos'
+  and public.site_photo_project(name) is not null
+  and public.project_visible(public.site_photo_project(name))
+  and public.can_remove_site_photo(name));
+
+-- No update policy on purpose: every upload gets a fresh key, so an
+-- object is written once and never overwritten — which is also why a
+-- signed URL can be cached for its whole life without going stale.
 
 
 -- ============================================================

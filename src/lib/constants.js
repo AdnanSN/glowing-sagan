@@ -126,6 +126,11 @@ export const ROLE_PERMISSIONS = {
   manage_milestones: 70,
   manage_tasks:      40,
   manage_documents:  40,
+  // Site photos sit on the same rung as documents to add, but removing
+  // one is narrower: your own upload, or a project lead. A site record
+  // is evidence. RLS enforces both — see migration_v10_site_photos.sql.
+  add_site_photos:   40,
+  delete_any_photo:  70,
   post_comments:     40,
   view_all:          10,
 }

@@ -3733,3 +3733,287 @@ h1, h2, h3, h4, h5, h6 {
   .gantt-project-select { width: 100%; }
   .gantt-search-input { width: 110px; }
 }
+
+/* ===========================
+   SITE PHOTOS
+   Taken on a phone, on site, in gloves — so the tap targets are large,
+   the grid is dense enough to scan, and the viewer is the whole screen.
+   =========================== */
+.photo-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.empty-state .photo-actions { margin-top: var(--space-2); }
+
+.photo-progress {
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.photo-progress-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-bold);
+  margin-bottom: var(--space-3);
+}
+
+.photo-progress-note {
+  font-size: var(--text-xs);
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
+}
+
+.photo-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid rgba(192, 40, 28, 0.25);
+  background: var(--danger-light);
+  color: var(--danger);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.photo-error svg { flex-shrink: 0; margin-top: 3px; }
+.photo-error-list { margin: var(--space-2) 0 0 var(--space-4); font-size: var(--text-xs); }
+
+.photo-filter { margin-bottom: var(--space-4); }
+.photo-filter .form-select { max-width: 260px; }
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+
+.photo-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.photo-tile:hover { border-color: var(--border-strong); }
+
+.photo-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-tile-date {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 3px 7px;
+  background: rgba(26, 26, 26, 0.7);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+}
+
+.photo-tile-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-4) var(--space-2) var(--space-2);
+  background: linear-gradient(to top, rgba(26, 26, 26, 0.85), transparent);
+  color: #fff;
+  font-size: var(--text-xs);
+  text-align: left;
+  line-height: 1.4;
+  /* Two lines, then it is somebody's essay — the rest is in the viewer. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.photo-footprint {
+  margin-top: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── The viewer ───────────────────────────────────────────── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #0D0D0D;
+  display: flex;
+  flex-direction: column;
+}
+
+.lightbox-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  padding-top: max(var(--space-3), env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.lightbox-count {
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-bar-actions { display: flex; align-items: center; gap: var(--space-1); }
+
+.lightbox-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.lightbox-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.lightbox-btn-danger:hover { color: #FF6B5E; border-color: rgba(255, 107, 94, 0.4); }
+
+.lightbox-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* The browser handles the horizontal swipe, we only read it. */
+  touch-action: pan-y;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: opacity 0.2s ease;
+}
+
+/* The grid's thumbnail, blown up behind the real thing so the screen is
+   never blank while a 400 KB image comes down a site connection. */
+.lightbox-img-placeholder {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  filter: blur(8px);
+  transform: scale(1.02);
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 13, 13, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.lightbox-nav:hover { background: rgba(13, 13, 13, 0.85); }
+.lightbox-nav-prev { left: 0; }
+.lightbox-nav-next { right: 0; }
+
+.lightbox-footer {
+  flex-shrink: 0;
+  padding: var(--space-4);
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.lightbox-caption {
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  margin-bottom: var(--space-2);
+}
+
+.lightbox-caption-empty { color: rgba(255, 255, 255, 0.35); font-style: italic; }
+
+.lightbox-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.lightbox-meta-stage {
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.lightbox-edit { display: flex; flex-direction: column; gap: var(--space-2); }
+.lightbox-edit .form-input,
+.lightbox-edit .form-select {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.lightbox-edit .form-input::placeholder { color: rgba(255, 255, 255, 0.4); }
+.lightbox-edit .form-select option { color: var(--text-primary); }
+
+.lightbox-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 768px) {
+  /* Three across on a phone: small enough to scan a site visit in one
+     screen, big enough to tell two grey walls apart. 96px rather than a
+     rounder number because a 375px screen leaves 327px inside the page
+     margins, and 3 × 105 + 2 × 8 of gap overflows that by four pixels —
+     which auto-fill answers by dropping to two. */
+  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .photo-actions .btn { flex: 1; justify-content: center; }
+  .photo-filter .form-select { max-width: 100%; }
+  /* Chevrons are for a mouse; on a phone the swipe does this. */
+  .lightbox-nav { display: none; }
+  .lightbox-footer { padding: var(--space-3); padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)); }
+}
