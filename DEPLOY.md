@@ -24,17 +24,44 @@ a practice running its own project system on it is neither.
 
 ---
 
-## Cloudflare Pages
+## Cloudflare Workers (static assets)
 
 Connect the repository once, then every push deploys.
+
+The dashboard's "Create app" flow produces a **Worker**, not a Pages project — its deploy
+step is `npx wrangler deploy`. That is fine, and arguably better: when the R2 signing
+endpoint arrives it can live in the same Worker, so the site and its API are one
+deployment.
 
 **Build settings**
 
 | Setting | Value |
 |---|---|
-| Framework preset | None (or Vite) |
+| Framework preset | Vite |
 | Build command | `npm run build` |
 | Build output directory | `dist` |
+| Deploy command | `npx wrangler deploy` |
+
+[`wrangler.jsonc`](wrangler.jsonc) is what makes the deploy work. Without it, wrangler
+tries to configure the project itself through the Cloudflare Vite plugin, which requires
+**Vite 6** — this project is on 5.4, so the deploy fails with *"cannot be automatically
+configured"* even though the build succeeded. Naming the settings explicitly skips that
+detection entirely.
+
+`not_found_handling: "single-page-application"` in that file is what serves `index.html`
+for unknown paths, so refreshing on `/projects/<id>` works. It is the Workers equivalent
+of the rewrite in `vercel.json`.
+
+Check a config change before pushing it:
+
+```bash
+npx wrangler deploy --dry-run
+```
+
+**If you would rather use Pages:** Compute → Pages → Create a project → Connect to Git,
+with the same build command and output directory. Pages ignores `wrangler.jsonc` and uses
+[`public/_redirects`](public/_redirects) for the SPA fallback instead — which is why that
+file is kept.
 
 **Environment variables** — set these under Settings → Environment variables, for both
 Production and Preview:

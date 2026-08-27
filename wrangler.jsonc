@@ -1,0 +1,42 @@
+{
+  // Cloudflare Workers deployment for the built site.
+  //
+  // WHY THIS FILE EXISTS
+  //   The dashboard's "Create app" flow makes a Worker, not a Pages
+  //   project, and its deploy step is `npx wrangler deploy`. Without a
+  //   config, wrangler tries to work the project out for itself, which
+  //   it does through the Cloudflare Vite plugin - and that plugin
+  //   needs Vite 6. This project is on Vite 5.4, so the deploy failed
+  //   with "cannot be automatically configured".
+  //
+  //   Naming the settings here skips the auto-detection entirely. The
+  //   build already works; only the deploy needed telling what it was
+  //   looking at. Upgrading Vite would also fix it, but that is a
+  //   dependency bump with its own risk, to solve a problem that is
+  //   really just a missing config file.
+  //
+  // NO WORKER CODE
+  //   There is no `main`. This deploys assets only, which is all a
+  //   static React bundle needs. When the R2 signing endpoint arrives
+  //   it can be added here as `main` plus `run_worker_first`, and the
+  //   site and its API become one deployment - which is the whole
+  //   argument for being on Workers rather than Pages.
+  "name": "glowing-sagan",
+  "compatibility_date": "2026-08-27",
+
+  "assets": {
+    // Vite's build output. Set explicitly because the Vite plugin,
+    // which would otherwise supply it, is not in use.
+    "directory": "./dist",
+
+    // React Router owns every path after the first load, so an unknown
+    // path has to return index.html with a 200 rather than a 404 -
+    // otherwise refreshing on /projects/<id> or following a reset link
+    // to /reset-password dead-ends. This is the Workers equivalent of
+    // the rewrite in vercel.json and of public/_redirects.
+    //
+    // Real files under /assets/* are matched before this applies, so
+    // the bundle and favicons still serve normally.
+    "not_found_handling": "single-page-application"
+  }
+}
