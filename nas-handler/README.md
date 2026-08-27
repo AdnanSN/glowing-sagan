@@ -52,26 +52,66 @@ Typing or pasting a path still works and needs none of this. Explorer's **Copy a
 
 ## Installing
 
-On each office PC, from this folder:
+**Do this once, by whoever sets it up:** copy this folder onto the share somewhere
+everyone can read, and create a file next to `install.cmd` called `nas-root.txt`
+containing one line — the share root:
 
-```bash
-powershell -ExecutionPolicy Bypass -File install.ps1 -NasRoot "\\NAS01\Projects"
+```
+\\NAS01\Projects
 ```
 
-No administrator rights are needed. It registers the `nhn://` scheme under the current
-user and copies the handler into `%LOCALAPPDATA%\NHN PM`.
+**Then, on each PC:** open that folder from the share and double-click **`install.cmd`**.
+That is the whole procedure. It reads the root from `nas-root.txt`, so nobody types a
+path, and no administrator rights are needed — the `nhn://` scheme is registered under
+the current user only.
 
 The first time someone clicks an open button, the browser asks whether to allow the link
 to open the app. Tick "always allow" and it stops asking.
 
-To remove it:
+### Checking before you commit to it
+
+```bash
+install.cmd -DryRun
+```
+
+Prints exactly what it would register and changes nothing. Worth running once before
+going round twelve machines.
+
+### Central mode: don't copy the handler at all
+
+```bash
+install.cmd -FromShare
+```
+
+Registers the handler **where it sits on the share** instead of copying it into the user
+profile. The advantage is real: fixing or changing the handler later becomes one edit on
+the NAS rather than another visit to every machine. The share root also lives in one file
+instead of one per PC.
+
+The trade-off is equally real. Anyone who can write to that folder can change a script
+that then runs on every PC in the practice, so **put it somewhere only whoever maintains
+this can write to.** A read-only share for everyone else is the right setup. If the whole
+office has write access to it, use the default local mode instead.
+
+Central mode also means the handler stops working when the share is unreachable — which
+matters less than it sounds, since the files it opens are on that same share.
+
+### Doing it without visiting machines at all
+
+If the firm is on a Windows domain, Group Policy Preferences can push the same two
+registry values and skip the per-PC step entirely. The values are shown by `-DryRun`.
+
+Without a domain, `install.cmd` on the share is the practical answer — it is a
+double-click, so it can be sent round in an email rather than done in person.
+
+### Removing it
 
 ```bash
 powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```
 
-If the firm is on a domain, the same registry values can go out by Group Policy instead
-of visiting each machine.
+Nothing in the PM system breaks: paths and the copy button keep working. Only the
+one-click open and browse buttons stop.
 
 ## Use the network path, not a drive letter
 
