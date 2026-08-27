@@ -58,27 +58,44 @@ Check a config change before pushing it:
 npx wrangler deploy --dry-run
 ```
 
-**If you would rather use Pages:** Compute → Pages → Create a project → Connect to Git,
-with the same build command and output directory. Pages ignores `wrangler.jsonc` and uses
-[`public/_redirects`](public/_redirects) for the SPA fallback instead — which is why that
-file is kept.
+**Do not add a `public/_redirects` file with `/* /index.html 200`.** Workers static assets
+parses `_redirects` and already normalises `.html` and `/index` itself, so that rule is
+rejected at deploy time as an infinite loop (error 100324). `not_found_handling` above is
+the supported way to do it here.
 
-**Environment variables** — set these under Settings → Environment variables, for both
-Production and Preview:
+**If you would rather use Pages:** Compute → Pages → Create a project → Connect to Git,
+with the same build command and output directory. Pages ignores `wrangler.jsonc`, so it
+*would* need a `public/_redirects` containing `/*    /index.html   200` — the opposite of
+the rule above. The two platforms want opposite things here, which is worth remembering if
+the project ever moves.
+
+**Environment variables** — these are the two that decide whether anyone can log in:
 
 ```
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<the anon key>
 ```
 
-Vite inlines `VITE_` variables **at build time**, not at run time, so changing either one
-means triggering a fresh deploy. The anon key belongs in the bundle — it is public by
-design, and row-level security is what actually protects the data. The service role key
-must never appear in a `VITE_` variable.
+Two ways to get this wrong, and both fail quietly with a site that deploys perfectly and
+then shows "⚡ SUPABASE SETUP REQUIRED":
 
-Deep links are handled by [`public/_redirects`](public/_redirects), which is the Pages
-equivalent of the rewrite in `vercel.json`. Without it, refreshing on `/projects/<id>`
-returns a 404.
+**They must be BUILD variables, not Worker variables.** Vite inlines anything prefixed
+`VITE_` into the JavaScript during `npm run build`. By the time the Worker is running,
+the bundle is a finished file — it cannot read a runtime binding. So these belong in the
+build configuration (Settings → Build), *not* in Variables and Secrets, which is for code
+running inside a Worker. A correct value in the wrong section does nothing at all.
+
+**The prefix must be `VITE_`.** Not `NEXT_PUBLIC_`, which is the Next.js convention and is
+invisible to Vite. Only `VITE_`-prefixed variables are exposed to the client bundle, and
+that filter is a safety feature: it is what stops every environment variable on the build
+machine being published in your JavaScript.
+
+Because the values are baked in at build time, changing either one requires a **fresh
+deploy** to take effect — editing the variable alone does nothing to the site already
+deployed.
+
+The anon key belongs in the bundle; it is public by design, and row-level security is what
+protects the data. The service role key must never appear in a `VITE_` variable.
 
 ---
 

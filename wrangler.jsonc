@@ -10,10 +10,10 @@
   //   with "cannot be automatically configured".
   //
   //   Naming the settings here skips the auto-detection entirely. The
-  //   build already works; only the deploy needed telling what it was
+  //   build already worked; only the deploy needed telling what it was
   //   looking at. Upgrading Vite would also fix it, but that is a
-  //   dependency bump with its own risk, to solve a problem that is
-  //   really just a missing config file.
+  //   dependency bump with its own risk, to solve what is really a
+  //   missing config file.
   //
   // NO WORKER CODE
   //   There is no `main`. This deploys assets only, which is all a
@@ -24,6 +24,12 @@
   "name": "glowing-sagan",
   "compatibility_date": "2026-08-27",
 
+  // Serve the site at <name>.<subdomain>.workers.dev. Stated here
+  // rather than left to the dashboard so that deploying does not
+  // silently flip it, and so this file is the whole truth about how
+  // the Worker is configured.
+  "workers_dev": true,
+
   "assets": {
     // Vite's build output. Set explicitly because the Vite plugin,
     // which would otherwise supply it, is not in use.
@@ -33,10 +39,18 @@
     // path has to return index.html with a 200 rather than a 404 -
     // otherwise refreshing on /projects/<id> or following a reset link
     // to /reset-password dead-ends. This is the Workers equivalent of
-    // the rewrite in vercel.json and of public/_redirects.
+    // the rewrite in vercel.json.
     //
     // Real files under /assets/* are matched before this applies, so
     // the bundle and favicons still serve normally.
+    //
+    // DO NOT ALSO ADD public/_redirects WITH `/* /index.html 200`.
+    // Workers static assets parses _redirects and already normalises
+    // `.html` and `/index` itself, so that rule is rejected at deploy
+    // time as an infinite loop (error 100324). This setting is the
+    // supported way to do it here. A _redirects file is only needed if
+    // the project is ever moved to Cloudflare Pages, which ignores
+    // this file.
     "not_found_handling": "single-page-application"
   }
 }
