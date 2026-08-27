@@ -1,8 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Login } from './pages/Login'
+import { ResetPassword } from './pages/ResetPassword'
 import { PendingApproval } from './pages/PendingApproval'
 import { AccessControl } from './pages/AccessControl'
 import { Dashboard } from './pages/Dashboard'
@@ -39,6 +40,13 @@ VITE_SUPABASE_ANON_KEY=your_anon_key`}
 
 function AppRoutes() {
   const { isAuthenticated, isApproved, loading } = useAuth()
+  const location = useLocation()
+
+  // A recovery link signs the person in before they've typed a new password,
+  // so this page has to stay reachable no matter what their account status
+  // is — someone who is pending or suspended can still have lost their
+  // password, and bouncing them to the gate would strand the link.
+  const isResettingPassword = location.pathname === '/reset-password'
 
   if (loading) {
     return (
@@ -52,7 +60,7 @@ function AppRoutes() {
   // Signed in but not yet let in: the whole app is replaced by the gate.
   // The database already returns nothing for these accounts — this is so
   // they get an explanation rather than a wall of empty screens.
-  if (isAuthenticated && !isApproved) {
+  if (isAuthenticated && !isApproved && !isResettingPassword) {
     return (
       <Routes>
         <Route path="*" element={<PendingApproval />} />
@@ -62,11 +70,12 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Public route */}
+      {/* Public routes */}
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
       />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Protected routes */}
       <Route

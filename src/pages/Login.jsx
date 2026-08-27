@@ -3,8 +3,8 @@ import { useAuth } from '../lib/AuthContext'
 import { Eye, EyeOff, Lock, Mail, User, AlertCircle, MailCheck, Clock } from 'lucide-react'
 
 export function Login() {
-  const { signIn, signUp } = useAuth()
-  const [mode, setMode] = useState('signin')      // 'signin' | 'signup'
+  const { signIn, signUp, sendPasswordReset } = useAuth()
+  const [mode, setMode] = useState('signin')      // 'signin' | 'signup' | 'forgot'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -13,12 +13,14 @@ export function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(null) // { needsConfirmation, email }
+  const [resetSentTo, setResetSentTo] = useState('')
 
   function switchMode(next) {
     setMode(next)
     setError('')
     setPassword('')
     setConfirmPassword('')
+    setResetSentTo('')
   }
 
   async function handleSignIn(e) {
@@ -60,7 +62,26 @@ export function Login() {
     setSubmitted({ needsConfirmation, email })
   }
 
+  async function handleForgotPassword(e) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const address = email.trim()
+    const { error: authError } = await sendPasswordReset(address)
+    setLoading(false)
+
+    // Supabase answers the same way whether or not the address has an
+    // account — the confirmation below deliberately does too, so this page
+    // can't be used to find out who works here.
+    if (authError) {
+      setError(authError.message)
+      return
+    }
+    setResetSentTo(address)
+  }
+
   const isSignUp = mode === 'signup'
+  const isForgot = mode === 'forgot'
 
   return (
     <div className="login-page">
@@ -110,7 +131,27 @@ export function Login() {
               <img src="/NHN_LOGO.svg" alt="NHN Architects" className="login-mobile-logo-img" />
             </div>
 
-            {submitted ? (
+            {resetSentTo ? (
+              <div className="login-success" id="reset-sent">
+                <div className="login-success-icon">
+                  <MailCheck size={26} />
+                </div>
+                <h2 className="login-form-title">Check your inbox</h2>
+                <p className="login-success-text">
+                  If <strong>{resetSentTo}</strong> belongs to an account, a link
+                  to set a new password is on its way. The link expires shortly
+                  and can only be used once — check your spam folder if it
+                  doesn't arrive.
+                </p>
+                <button
+                  className="login-submit-btn"
+                  onClick={() => switchMode('signin')}
+                  id="reset-back-to-signin"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            ) : submitted ? (
               <div className="login-success" id="signup-success">
                 <div className="login-success-icon">
                   {submitted.needsConfirmation ? <MailCheck size={26} /> : <Clock size={26} />}
@@ -141,37 +182,41 @@ export function Login() {
               <>
                 <div className="login-form-header">
                   <h2 className="login-form-title">
-                    {isSignUp ? 'Request access' : 'Welcome back'}
+                    {isForgot ? 'Reset your password' : isSignUp ? 'Request access' : 'Welcome back'}
                   </h2>
                   <p className="login-form-subtitle">
-                    {isSignUp
-                      ? 'Create your account — an owner approves it'
-                      : 'Sign in to your account to continue'}
+                    {isForgot
+                      ? 'We’ll email you a link to set a new one'
+                      : isSignUp
+                        ? 'Create your account — an owner approves it'
+                        : 'Sign in to your account to continue'}
                   </p>
                 </div>
 
-                <div className="login-tabs" role="tablist">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={!isSignUp}
-                    className={`login-tab${!isSignUp ? ' active' : ''}`}
-                    onClick={() => switchMode('signin')}
-                    id="tab-signin"
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={isSignUp}
-                    className={`login-tab${isSignUp ? ' active' : ''}`}
-                    onClick={() => switchMode('signup')}
-                    id="tab-signup"
-                  >
-                    Create account
-                  </button>
-                </div>
+                {!isForgot && (
+                  <div className="login-tabs" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={!isSignUp}
+                      className={`login-tab${!isSignUp ? ' active' : ''}`}
+                      onClick={() => switchMode('signin')}
+                      id="tab-signin"
+                    >
+                      Sign in
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={isSignUp}
+                      className={`login-tab${isSignUp ? ' active' : ''}`}
+                      onClick={() => switchMode('signup')}
+                      id="tab-signup"
+                    >
+                      Create account
+                    </button>
+                  </div>
+                )}
 
                 {error && (
                   <div className="login-error" id="login-error">
@@ -181,7 +226,7 @@ export function Login() {
                 )}
 
                 <form
-                  onSubmit={isSignUp ? handleSignUp : handleSignIn}
+                  onSubmit={isForgot ? handleForgotPassword : isSignUp ? handleSignUp : handleSignIn}
                   className="login-form"
                   id="login-form"
                 >
@@ -223,8 +268,21 @@ export function Login() {
                     </div>
                   </div>
 
+                  {!isForgot && (
                   <div className="login-field">
-                    <label className="login-label" htmlFor="login-password">Password</label>
+                    <div className="login-label-row">
+                      <label className="login-label" htmlFor="login-password">Password</label>
+                      {!isSignUp && (
+                        <button
+                          type="button"
+                          className="login-link"
+                          onClick={() => switchMode('forgot')}
+                          id="forgot-password"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
                     <div className="login-input-wrapper">
                       <Lock size={16} className="login-input-icon" />
                       <input
@@ -244,6 +302,7 @@ export function Login() {
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {isSignUp && (
                     <div className="login-field">
@@ -266,26 +325,42 @@ export function Login() {
 
                   <button type="submit" className="login-submit-btn"
                     disabled={
-                      loading || !email || !password ||
+                      loading || !email ||
+                      (!isForgot && !password) ||
                       (isSignUp && (!fullName.trim() || !confirmPassword))
                     }
                     id="login-submit">
                     {loading
-                      ? <><div className="login-spinner" />{isSignUp ? 'Submitting…' : 'Signing in…'}</>
-                      : isSignUp ? 'Request Access' : 'Sign In'}
+                      ? <>
+                          <div className="login-spinner" />
+                          {isForgot ? 'Sending…' : isSignUp ? 'Submitting…' : 'Signing in…'}
+                        </>
+                      : isForgot ? 'Send Reset Link' : isSignUp ? 'Request Access' : 'Sign In'}
                   </button>
                 </form>
 
                 <div className="login-help">
-                  {isSignUp ? (
+                  {isForgot ? (
+                    <p>
+                      Remembered it after all?{' '}
+                      <button
+                        type="button"
+                        className="login-link"
+                        onClick={() => switchMode('signin')}
+                        id="forgot-back-to-signin"
+                      >
+                        Back to sign in
+                      </button>
+                    </p>
+                  ) : isSignUp ? (
                     <p>
                       New accounts start with no access. A principal architect reviews
                       every request and decides what you can see and edit.
                     </p>
                   ) : (
                     <p>
-                      Forgotten your password? Contact a principal architect — they can
-                      reset it for you.
+                      Forgotten your password? Use the reset link above — it emails you
+                      a secure link. Anything else, contact a principal architect.
                     </p>
                   )}
                 </div>

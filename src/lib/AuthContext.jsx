@@ -10,6 +10,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  // True between clicking a recovery link and saving the new password. The
+  // link hands out a real session, so this is the only thing that tells the
+  // two apart.
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -27,7 +31,8 @@ export function AuthProvider({ children }) {
     // and leaves the app stuck on "Loading…" after a refresh. Defer all
     // supabase work via setTimeout so it runs after the lock is released.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true)
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
@@ -122,12 +127,24 @@ export function AuthProvider({ children }) {
     return { data, error: null, needsConfirmation: !data.session }
   }
 
+  // Anyone with an account can ask for this — including people who are still
+  // pending or suspended, since a locked-out password is a separate problem
+  // from a locked-out account. Supabase answers identically whether or not
+  // the address exists, so nothing here reveals who has an account.
+  async function sendPasswordReset(email) {
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    return { data, error }
+  }
+
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (!error) {
       setSession(null)
       setUser(null)
       setProfile(null)
+      setIsPasswordRecovery(false)
     }
     return { error }
   }
@@ -136,6 +153,9 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.updateUser({
       password: newPassword,
     })
+    // The recovery session becomes an ordinary one the moment the password
+    // it was issued for is replaced.
+    if (!error) setIsPasswordRecovery(false)
     return { data, error }
   }
 
@@ -161,9 +181,11 @@ export function AuthProvider({ children }) {
     userEmployee,
     loading,
     isApproved,
+    isPasswordRecovery,
     signIn,
     signUp,
     signOut,
+    sendPasswordReset,
     updatePassword,
     refreshProfile,
     hasPermission,

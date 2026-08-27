@@ -80,6 +80,9 @@ const stub = {
     signUp: notConfigured,
     signOut: () => Promise.resolve({ error: null }),
     updateUser: notConfigured,
+    resetPasswordForEmail: notConfigured,
+    verifyOtp: notConfigured,
+    exchangeCodeForSession: notConfigured,
     getSession: () => Promise.resolve({ data: { session: null }, error: null }),
   },
 }
