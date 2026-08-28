@@ -25,6 +25,3 @@ dist-ssr
 
 # Supabase seed scripts (contain service role key — never commit!)
 supabase/seed-users.mjs
-
-# Each site's NAS share root - set per firm, not per repo.
-nas-handler/nas-root.txt
