@@ -76,19 +76,19 @@ export const PROJECT_COLORS = [
 // enforcement, this is only so the UI hides what would fail anyway.
 export const ACCESS_ROLES = [
   {
-    value: 'admin', label: 'Level 1 – Principal Architect', short: 'L1', level: 1, rank: 100, color: '#C0281C',
+    value: 'admin', label: 'Level 1', short: 'L1', level: 1, rank: 100, color: '#C0281C',
     description: 'Full control, including who gets access.',
   },
   {
-    value: 'manager', label: 'Level 2 – Project Lead', short: 'L2', level: 2, rank: 70, color: '#B4531F',
+    value: 'manager', label: 'Level 2', short: 'L2', level: 2, rank: 70, color: '#B4531F',
     description: 'Creates and edits projects, milestones, tasks and documents.',
   },
   {
-    value: 'member', label: 'Level 3 – Architect', short: 'L3', level: 3, rank: 40, color: '#0041C2',
+    value: 'member', label: 'Level 3', short: 'L3', level: 3, rank: 40, color: '#0041C2',
     description: 'Edits tasks and documents, posts comments.',
   },
   {
-    value: 'viewer', label: 'Level 4 – Viewer', short: 'L4', level: 4, rank: 10, color: '#6B7280',
+    value: 'viewer', label: 'Level 4', short: 'L4', level: 4, rank: 10, color: '#6B7280',
     description: 'Read-only access to everything.',
   },
 ]

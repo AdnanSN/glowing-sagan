@@ -39,7 +39,6 @@ export function Projects() {
   const [folders, setFolders] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('All')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -59,10 +58,22 @@ export function Projects() {
   const countsFor = useRef(null)
   const navigate = useNavigate()
 
-  // Which folder is open lives in the URL, so browser Back steps out of
-  // a folder and a refresh keeps you where you were.
+  // Which folder is open and which status is filtered both live in the
+  // URL, so browser Back steps out of either, a refresh keeps you where
+  // you were, and the dashboard can link straight to "Active".
   const [params, setParams] = useSearchParams()
   const openFolderId = params.get('folder')
+  const rawStatus = params.get('status')
+  const filterStatus = PROJECT_STATUSES.includes(rawStatus) ? rawStatus : 'All'
+
+  // Changing one of the two never drops the other.
+  function setUrl(changes) {
+    const next = { folder: openFolderId, status: filterStatus, ...changes }
+    const out = {}
+    if (next.folder) out.folder = next.folder
+    if (next.status && next.status !== 'All') out.status = next.status
+    setParams(out)
+  }
 
   useEffect(() => { fetchAll() }, [])
 
@@ -77,8 +88,9 @@ export function Projects() {
     setLoading(false)
   }
 
-  function openFolder(id) { setParams(id ? { folder: id } : {}) }
-  function closeFolder() { setParams({}) }
+  function openFolder(id) { setUrl({ folder: id || null }) }
+  function closeFolder() { setUrl({ folder: null }) }
+  function setFilterStatus(status) { setUrl({ status }) }
 
   // ── Projects ────────────────────────────────────────────────
   function openNew() {

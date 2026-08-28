@@ -558,6 +558,36 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-tertiary);
 }
 
+/* Cards that stand for a filtered view are links to it. The arrow only
+   shows on hover/focus so the resting row stays a clean set of numbers. */
+.stat-card-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  position: relative;
+}
+
+.stat-card-link:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.stat-arrow {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: var(--transition);
+}
+
+.stat-card-link:hover .stat-arrow,
+.stat-card-link:focus-visible .stat-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 .stat-icon {
   width: 40px;
   height: 40px;
@@ -1827,6 +1857,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .stat-card { padding: var(--space-4); }
+  .stat-arrow { top: var(--space-4); right: var(--space-4); }
   .stat-value { font-size: var(--text-2xl); }
   .stat-icon { width: 34px; height: 34px; }
 
@@ -1907,6 +1938,8 @@ h1, h2, h3, h4, h5, h6 {
     padding: var(--space-4) var(--space-3);
     gap: var(--space-3);
   }
+
+  .stat-arrow { top: var(--space-4); right: var(--space-3); }
 
   .stat-value { font-size: var(--text-xl); }
   .stat-icon { width: 30px; height: 30px; }
@@ -1998,6 +2031,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Touch device improvements */
 @media (hover: none) {
   .stat-card:hover { background: var(--bg-secondary); }
+  .stat-arrow { opacity: 1; transform: none; }
   .project-card:hover { background: var(--bg-secondary); border-color: var(--border-light); }
   .kanban-task-card:hover { border-color: var(--border-light); background: var(--bg-secondary); }
   .table tbody tr:hover { background: transparent; }

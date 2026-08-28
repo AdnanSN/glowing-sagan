@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import {
   FolderKanban, CheckSquare, Users, AlertTriangle,
   TrendingUp, Clock, Plus, ArrowRight, Circle
@@ -11,7 +12,34 @@ import { ConfidentialTag } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { projectStages, PROJECT_COLORS } from '../lib/constants'
 
+/**
+ * One figure in the top row. Every card stands for a slice of the data,
+ * so where that slice has a page it links there with the same filter
+ * already applied — the number you clicked is the list you land on.
+ * Without `to` it stays a plain, unclickable card.
+ */
+function StatCard({ to, icon, iconStyle, value, label, delta, deltaStyle }) {
+  const body = (
+    <>
+      <div className="stat-icon" style={iconStyle}>{icon}</div>
+      <div className="stat-content">
+        <div className="stat-value">{value}</div>
+        <div className="stat-label">{label}</div>
+        <div className="stat-delta" style={deltaStyle}>{delta}</div>
+      </div>
+      {to && <ArrowRight className="stat-arrow" size={14} aria-hidden="true" />}
+    </>
+  )
+
+  if (!to) return <div className="stat-card">{body}</div>
+
+  return (
+    <Link to={to} className="stat-card stat-card-link">{body}</Link>
+  )
+}
+
 export function Dashboard() {
+  const { hasPermission } = useAuth()
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
   const [employees, setEmployees] = useState([])
@@ -40,7 +68,10 @@ export function Dashboard() {
   const activeProjects = projects.filter(p => p.status === 'Active').length
   const todayTasks = tasks.filter(t => t.due_date && isToday(new Date(t.due_date)) && t.status !== 'Done').length
   const overdueTasks = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)) && t.status !== 'Done').length
+  const openTasks = tasks.filter(t => t.status !== 'Done').length
+  const assignedTasks = tasks.filter(t => t.assignee_id && t.status !== 'Done').length
   const upcomingMilestones = milestones.filter(m => !m.is_completed && m.due_date).slice(0, 5)
+  const canManageTeam = hasPermission('manage_team')
 
   const recentProjects = projects.slice(0, 6)
 
@@ -66,50 +97,44 @@ export function Dashboard() {
       <div className="page-body">
         {/* Stats */}
         <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--accent-light)', color: 'var(--accent-primary)' }}>
-              <FolderKanban />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{activeProjects}</div>
-              <div className="stat-label">Active Projects</div>
-              <div className="stat-delta">{projects.length} total</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--info-light)', color: 'var(--info)' }}>
-              <CheckSquare />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{tasks.filter(t => t.status !== 'Done').length}</div>
-              <div className="stat-label">Open Tasks</div>
-              <div className="stat-delta">{todayTasks} due today</div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: overdueTasks > 0 ? 'var(--danger-light)' : 'var(--success-light)', color: overdueTasks > 0 ? 'var(--danger)' : 'var(--success)' }}>
-              <AlertTriangle />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{overdueTasks}</div>
-              <div className="stat-label">Overdue Tasks</div>
-              <div className="stat-delta" style={{ color: overdueTasks > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                {overdueTasks > 0 ? 'Needs attention' : 'All on track'}
-              </div>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: '#EFEDF6', color: '#6B5CA5' }}>
-              <Users />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{employees.length}</div>
-              <div className="stat-label">Team Members</div>
-              <div className="stat-delta">
-                {tasks.filter(t => t.assignee_id && t.status !== 'Done').length} assigned tasks
-              </div>
-            </div>
-          </div>
+          <StatCard
+            to="/projects?status=Active"
+            icon={<FolderKanban />}
+            iconStyle={{ background: 'var(--accent-light)', color: 'var(--accent-primary)' }}
+            value={activeProjects}
+            label="Active Projects"
+            delta={`${projects.length} total`}
+          />
+          <StatCard
+            to="/tasks"
+            icon={<CheckSquare />}
+            iconStyle={{ background: 'var(--info-light)', color: 'var(--info)' }}
+            value={openTasks}
+            label="Open Tasks"
+            delta={`${todayTasks} due today`}
+          />
+          <StatCard
+            to="/tasks?due=overdue"
+            icon={<AlertTriangle />}
+            iconStyle={{
+              background: overdueTasks > 0 ? 'var(--danger-light)' : 'var(--success-light)',
+              color: overdueTasks > 0 ? 'var(--danger)' : 'var(--success)',
+            }}
+            value={overdueTasks}
+            label="Overdue Tasks"
+            delta={overdueTasks > 0 ? 'Needs attention' : 'All on track'}
+            deltaStyle={{ color: overdueTasks > 0 ? 'var(--danger)' : 'var(--success)' }}
+          />
+          {/* The team page is gated on manage_team, so people who cannot
+              open it get the count without a link into a refusal. */}
+          <StatCard
+            to={canManageTeam ? '/team' : undefined}
+            icon={<Users />}
+            iconStyle={{ background: '#EFEDF6', color: '#6B5CA5' }}
+            value={employees.length}
+            label="Team Members"
+            delta={`${assignedTasks} assigned tasks`}
+          />
         </div>
 
         <div className="dashboard-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 'var(--space-6)' }}>
@@ -227,7 +252,7 @@ export function Dashboard() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">Team</span>
-                <Link to="/team" className="btn btn-ghost btn-sm">Manage</Link>
+                {canManageTeam && <Link to="/team" className="btn btn-ghost btn-sm">Manage</Link>}
               </div>
               <div className="card-body" style={{ paddingTop: 'var(--space-2)', paddingBottom: 'var(--space-2)' }}>
                 {employees.length === 0 ? (

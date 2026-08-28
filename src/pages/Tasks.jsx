@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
@@ -22,6 +23,23 @@ const PRIORITY_COLORS = {
   'High': 'var(--priority-high)',
 }
 
+// Slices of the board by when work is due. The dashboard's stat cards
+// link straight to these, so the counts there and the board agree.
+const DUE_FILTERS = [
+  { value: 'All', label: 'Any due date' },
+  { value: 'today', label: 'Due today' },
+  { value: 'overdue', label: 'Overdue' },
+]
+
+function matchesDue(task, filter) {
+  if (filter === 'All') return true
+  // Finished work is neither due nor late, whatever its date says.
+  if (!task.due_date || task.status === 'Done') return false
+  const due = new Date(task.due_date)
+  if (filter === 'today') return isToday(due)
+  return isPast(due) && !isToday(due)
+}
+
 const EMPTY_FORM = {
   title: '', description: '', status: 'To Do', priority: 'Medium',
   project_id: '', assignee_id: '', due_date: '', stage: ''
@@ -37,6 +55,12 @@ export function Tasks() {
   const [search, setSearch] = useState('')
   const [filterProject, setFilterProject] = useState('All')
   const [filterAssignee, setFilterAssignee] = useState('All')
+  // The due-date filter lives in the URL so the dashboard can link to a
+  // slice of the board, Back steps out of it, and a refresh keeps it.
+  const [params, setParams] = useSearchParams()
+  const rawDue = params.get('due')
+  const filterDue = DUE_FILTERS.some(d => d.value === rawDue) ? rawDue : 'All'
+  const setFilterDue = (value) => setParams(value === 'All' ? {} : { due: value })
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -101,7 +125,7 @@ export function Tasks() {
     const matchSearch = t.title.toLowerCase().includes(search.toLowerCase())
     const matchProject = filterProject === 'All' || t.project_id === filterProject
     const matchAssignee = filterAssignee === 'All' || t.assignee_id === filterAssignee
-    return matchSearch && matchProject && matchAssignee
+    return matchSearch && matchProject && matchAssignee && matchesDue(t, filterDue)
   })
 
   const columns = TASK_STATUSES.map(status => ({
@@ -128,7 +152,11 @@ export function Tasks() {
       <div className="page-header">
         <div className="page-header-left">
           <span className="page-header-title">Tasks</span>
-          <span className="page-header-sub">{tasks.filter(t => t.status !== 'Done').length} open tasks</span>
+          <span className="page-header-sub">
+            {filterDue === 'All'
+              ? `${tasks.filter(t => t.status !== 'Done').length} open tasks`
+              : `${filtered.length} ${filterDue === 'overdue' ? 'overdue' : 'due today'}`}
+          </span>
         </div>
         <div className="page-header-actions">
           <RefreshButton onRefresh={fetchAll} />
@@ -155,6 +183,10 @@ export function Tasks() {
             <option value="All">All Assignees</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
+          <select className="form-select" style={{ width: 'auto', height: 36 }} value={filterDue}
+            onChange={e => setFilterDue(e.target.value)}>
+            {DUE_FILTERS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
         </div>
 
         {loading ? (
@@ -166,6 +198,23 @@ export function Tasks() {
               <div className="empty-state-title">No tasks yet</div>
               <div className="empty-state-desc">Add tasks and assign them to team members</div>
               {canManage && <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>}
+            </div>
+          </div>
+        ) : filterDue !== 'All' && filtered.length === 0 && !search && filterProject === 'All' && filterAssignee === 'All' ? (
+          /* Arriving from the dashboard with nothing to see should say so,
+             not leave four empty columns to read as a loading failure. */
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-state-icon"><CheckSquare /></div>
+              <div className="empty-state-title">
+                {filterDue === 'overdue' ? 'Nothing overdue' : 'Nothing due today'}
+              </div>
+              <div className="empty-state-desc">
+                {filterDue === 'overdue'
+                  ? 'Every open task is still within its due date.'
+                  : 'No open task is due today.'}
+              </div>
+              <button className="btn btn-secondary" onClick={() => setFilterDue('All')}>Show all tasks</button>
             </div>
           </div>
         ) : (
