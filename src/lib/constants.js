@@ -76,19 +76,19 @@ export const PROJECT_COLORS = [
 // enforcement, this is only so the UI hides what would fail anyway.
 export const ACCESS_ROLES = [
   {
-    value: 'admin', label: 'Principal Architect', short: 'Admin', rank: 100, color: '#C0281C',
+    value: 'admin', label: 'Level 1 – Principal Architect', short: 'L1', level: 1, rank: 100, color: '#C0281C',
     description: 'Full control, including who gets access.',
   },
   {
-    value: 'manager', label: 'Project Lead', short: 'Manager', rank: 70, color: '#B4531F',
+    value: 'manager', label: 'Level 2 – Project Lead', short: 'L2', level: 2, rank: 70, color: '#B4531F',
     description: 'Creates and edits projects, milestones, tasks and documents.',
   },
   {
-    value: 'member', label: 'Architect', short: 'Member', rank: 40, color: '#0041C2',
+    value: 'member', label: 'Level 3 – Architect', short: 'L3', level: 3, rank: 40, color: '#0041C2',
     description: 'Edits tasks and documents, posts comments.',
   },
   {
-    value: 'viewer', label: 'Viewer', short: 'Viewer', rank: 10, color: '#6B7280',
+    value: 'viewer', label: 'Level 4 – Viewer', short: 'L4', level: 4, rank: 10, color: '#6B7280',
     description: 'Read-only access to everything.',
   },
 ]
@@ -102,7 +102,7 @@ export const ACCESS_STATUSES = {
 
 export function roleMeta(role) {
   return ACCESS_ROLES.find(r => r.value === role) || {
-    value: role, label: 'No access', short: '—', rank: 0, color: '#9CA3AF',
+    value: role, label: 'No access', short: '—', level: 0, rank: 0, color: '#9CA3AF',
     description: 'Awaiting approval.',
   }
 }

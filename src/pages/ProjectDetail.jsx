@@ -6,7 +6,7 @@ import { Modal } from '../components/Modal'
 import {
   ArrowLeft, Plus, CheckSquare, Check, Pencil, Trash2,
   FileText, ExternalLink, Send, Flag, MapPin, Calendar, Clock, Settings2,
-  Copy, FolderOpen, HardDrive
+  FolderOpen
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
 import { Avatar } from '../components/Avatar'
@@ -16,11 +16,7 @@ import {
   DEFAULT_PROJECT_TYPE, PROJECT_STATUSES, PROJECT_COLORS,
   projectStages, projectTypeOptions, getStatusColor
 } from '../lib/constants'
-import { NasPathField } from '../components/NasPathField'
-import {
-  normalizeNasPath, nasFullPath, nasFolderPath, nasProtocolUrl,
-  fetchNasRoot, copyText,
-} from '../lib/nas'
+import { DocumentLocationModal } from '../components/DocumentLocationModal'
 import { StageEditor } from '../components/StageEditor'
 import { SitePhotos } from '../components/SitePhotos'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
@@ -28,7 +24,7 @@ import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages
 
 const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '', is_confidential: false }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
-const EMPTY_DOC = { name: '', url: '', nas_path: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
+const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
 
 export function ProjectDetail() {
   const { id } = useParams()
@@ -63,9 +59,8 @@ export function ProjectDetail() {
   const [editingDoc, setEditingDoc] = useState(null)
   const [docForm, setDocForm] = useState(EMPTY_DOC)
   const [docSaveError, setDocSaveError] = useState(null)
-  // The share root every nas_path hangs off - see migration_v12.
-  const [nasRoot, setNasRoot] = useState('')
-  const [copiedDoc, setCopiedDoc] = useState(null)
+  // The document whose location panel is open.
+  const [viewingDoc, setViewingDoc] = useState(null)
 
   const [stageModal, setStageModal] = useState(false)
   const [stageRows, setStageRows] = useState([])
@@ -82,7 +77,7 @@ export function ProjectDetail() {
 
   async function fetchAll() {
     setLoading(true)
-    const [p, t, m, d, c, e, ph, root] = await Promise.all([
+    const [p, t, m, d, c, e, ph] = await Promise.all([
       // The folder comes along because it can restrict the project on
       // its own, and the header and edit modal both have to say so.
       supabase.from('projects')
@@ -95,7 +90,6 @@ export function ProjectDetail() {
       supabase.from('employees').select('*').order('name'),
       // head:true — the tab label needs the count, nothing else does.
       supabase.from('site_photos').select('id', { count: 'exact', head: true }).eq('project_id', id),
-      fetchNasRoot(),
     ])
     if (!p.data) { navigate('/projects'); return }
     setProject(p.data)
@@ -105,7 +99,6 @@ export function ProjectDetail() {
     setComments(c.data || [])
     setEmployees(e.data || [])
     setPhotoCount(ph.count || 0)
-    setNasRoot(root)
     setLoading(false)
   }
 
@@ -250,7 +243,7 @@ export function ProjectDetail() {
   function openEditDoc(d) {
     setEditingDoc(d)
     setDocForm({
-      name: d.name || '', url: d.url || '', nas_path: d.nas_path || '',
+      name: d.name || '', url: d.url || '',
       doc_type: d.doc_type || 'Drawing', uploaded_by: d.uploaded_by || '', notes: d.notes || '',
     })
     setDocSaveError(null)
@@ -258,13 +251,7 @@ export function ProjectDetail() {
   }
   function closeDocModal() { setDocModal(false); setEditingDoc(null) }
 
-  // Checked as it is typed so the modal can explain a bad path while
-  // it is still open. The constraint in migration_v12 is what actually
-  // holds; this only saves a round trip.
-  const docPathCheck = normalizeNasPath(docForm.nas_path, nasRoot)
-
   async function saveDoc() {
-    if (docPathCheck.error) return
     setSaving(true)
     setDocSaveError(null)
 
@@ -273,12 +260,11 @@ export function ProjectDetail() {
     // field that is not a column at all.
     const payload = {
       project_id: id,
-      name: docForm.name,
-      url: docForm.url || null,
-      nas_path: docPathCheck.path,
+      name: docForm.name.trim(),
+      url: docForm.url.trim() || null,
       doc_type: docForm.doc_type,
-      uploaded_by: docForm.uploaded_by || null,
-      notes: docForm.notes || null,
+      uploaded_by: docForm.uploaded_by.trim() || null,
+      notes: docForm.notes.trim() || null,
     }
 
     const { error } = editingDoc
@@ -291,14 +277,6 @@ export function ProjectDetail() {
     fetchAll()
   }
 
-  // The route that needs nothing installed: paste it into Explorer.
-  async function copyDocPath(doc) {
-    const text = nasFullPath(nasRoot, doc.nas_path)
-    if (!text) return
-    await copyText(text)
-    setCopiedDoc(doc.id)
-    setTimeout(() => setCopiedDoc(null), 1500)
-  }
 
   async function deleteDoc(did) {
     if (!confirm('Delete this document?')) return
@@ -362,7 +340,7 @@ export function ProjectDetail() {
   const docModalFooter = (
     <>
       <button className="btn btn-secondary" onClick={closeDocModal}>Cancel</button>
-      <button className="btn btn-primary" onClick={saveDoc} disabled={!docForm.name || saving || !!docPathCheck.error}>
+      <button className="btn btn-primary" onClick={saveDoc} disabled={!docForm.name.trim() || saving}>
         {saving ? 'Saving…' : editingDoc ? 'Save' : 'Add Document'}
       </button>
     </>
@@ -627,46 +605,26 @@ export function ProjectDetail() {
               <div className="doc-list">
                 {documents.map(doc => (
                   <div key={doc.id} className="doc-item">
-                    <div className="doc-icon"><FileText /></div>
-                    <div className="doc-info">
-                      <div className="doc-name">{doc.name}</div>
-                      <div className="doc-meta">
-                        <span className="tag" style={{ marginRight: 6 }}>{doc.doc_type}</span>
-                        {doc.uploaded_by && `By ${doc.uploaded_by} · `}
-                        {format(new Date(doc.created_at), 'd MMM yyyy')}
-                      </div>
-                      {doc.nas_path && (
-                        <div className={`doc-path${nasRoot ? '' : ' doc-path-unset'}`}
-                          title={nasRoot ? nasFullPath(nasRoot, doc.nas_path) : doc.nas_path}>
-                          <HardDrive size={11} />
-                          <span>{nasRoot
-                            ? nasFullPath(nasRoot, doc.nas_path)
-                            : `${doc.nas_path} — set the share root to use this`}</span>
+                    {/* The whole row opens the location panel — that is
+                        the one thing everybody comes here to do. */}
+                    <button className="doc-open" onClick={() => setViewingDoc(doc)} title="Show where this file is">
+                      <div className="doc-icon"><FileText /></div>
+                      <div className="doc-info">
+                        <div className="doc-name">{doc.name}</div>
+                        <div className="doc-meta">
+                          <span className="tag" style={{ marginRight: 6 }}>{doc.doc_type}</span>
+                          {doc.uploaded_by && `By ${doc.uploaded_by} · `}
+                          {format(new Date(doc.created_at), 'd MMM yyyy')}
                         </div>
-                      )}
-                      {doc.notes && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{doc.notes}</div>}
-                    </div>
+                        {doc.notes && <div className="doc-note">{doc.notes}</div>}
+                      </div>
+                    </button>
                     <div className="doc-actions">
-                      {doc.nas_path && nasRoot && (
-                        <>
-                          <a href={nasProtocolUrl(doc.nas_path, 'open')} className="icon-btn"
-                            title="Open the file from the NAS (needs the one-time desktop shortcut installed)">
-                            <HardDrive size={13} />
-                          </a>
-                          <a href={nasProtocolUrl(doc.nas_path, 'folder')} className="icon-btn"
-                            title={`Open the containing folder — ${nasFolderPath(nasRoot, doc.nas_path)}`}>
-                            <FolderOpen size={13} />
-                          </a>
-                          <button className="icon-btn" onClick={() => copyDocPath(doc)}
-                            title="Copy the full path — paste it into File Explorer"
-                            style={copiedDoc === doc.id ? { color: 'var(--success)' } : undefined}>
-                            {copiedDoc === doc.id ? <Check size={13} /> : <Copy size={13} />}
-                          </button>
-                        </>
-                      )}
-                      {doc.url && <a href={doc.url} target="_blank" rel="noopener noreferrer" className="icon-btn"><ExternalLink size={13} /></a>}
-                      {canManage && <button className="icon-btn" onClick={() => openEditDoc(doc)}><Pencil size={12} /></button>}
-                      {canManage && <button className="icon-btn" onClick={() => deleteDoc(doc.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
+                      <button className="icon-btn" onClick={() => setViewingDoc(doc)} title="Show file location">
+                        <FolderOpen size={13} />
+                      </button>
+                      {canManage && <button className="icon-btn" onClick={() => openEditDoc(doc)} title="Edit"><Pencil size={12} /></button>}
+                      {canManage && <button className="icon-btn" onClick={() => deleteDoc(doc.id)} title="Delete" style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
                     </div>
                   </div>
                 ))}
@@ -823,13 +781,15 @@ export function ProjectDetail() {
           <input className="form-input" type="url" placeholder="https://…" value={docForm.url}
             onChange={e => setDocForm(f => ({ ...f, url: e.target.value }))} />
         </div>
-        <NasPathField
-          value={docForm.nas_path}
-          onChange={v => setDocForm(f => ({ ...f, nas_path: v }))}
-          nasRoot={nasRoot}
-          check={docPathCheck}
-          onPicked={(rel, suggested) => setDocForm(f => ({ ...f, nas_path: rel, name: f.name || suggested }))}
-        />
+        <div className="form-group">
+          <label className="form-label">File Location</label>
+          <input className="form-input" placeholder="\\\\NAS01\\Projects\\RIY-2024-017\\Drawings\\A-101.pdf" value={docForm.url}
+            onChange={e => setDocForm(f => ({ ...f, url: e.target.value }))} />
+          <div className="form-hint">
+            Where the file lives — a network path, or a web link. In File Explorer,
+            Shift+right-click the file and choose “Copy as path”, then paste it here.
+          </div>
+        </div>
         <div className="form-group">
           <label className="form-label">Uploaded By</label>
           <input className="form-input" placeholder="e.g. Ahmed" value={docForm.uploaded_by}
@@ -844,6 +804,8 @@ export function ProjectDetail() {
           <div className="form-hint" style={{ color: 'var(--danger)' }}>Could not save: {docSaveError}</div>
         )}
       </Modal>
+
+      <DocumentLocationModal doc={viewingDoc} onClose={() => setViewingDoc(null)} />
 
       {/* Project Edit Modal */}
       <Modal isOpen={projectModal} onClose={closeProjectModal} title="Edit Project" size="lg" footer={projectModalFooter}>

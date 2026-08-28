@@ -1594,39 +1594,49 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
 }
 
-/* Where the file actually sits on the NAS. A share path runs long and
-   the row must not grow to fit one, so it truncates on one line and
-   the full value is the title attribute. */
-.doc-path {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 3px;
+.doc-note {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  margin-top: 2px;
 }
-.doc-path span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+/* The row itself is the button that opens the location panel, so it
+   has to shed the browser's button styling and keep the icon and text
+   laid out exactly as they were. */
+.doc-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.doc-path svg { flex-shrink: 0; }
-/* A path with no share root behind it cannot be opened yet — it reads
-   as a note about setup rather than as an address. */
-.doc-path-unset { color: var(--text-muted); font-style: italic; }
+.doc-open:hover .doc-name { text-decoration: underline; }
 
 .doc-actions { display: flex; gap: var(--space-1); flex-shrink: 0; }
 
-/* Path field + Browse button. The button keeps its width and the input
-   takes what is left; below 520px they stack, because a share path and
-   a button do not share a phone-width line usefully. */
-.nas-field { display: flex; gap: var(--space-2); align-items: stretch; }
-.nas-field .form-input { flex: 1; min-width: 0; }
-.nas-field .btn { flex-shrink: 0; white-space: nowrap; }
-@media (max-width: 520px) {
-  .nas-field { flex-direction: column; }
-  .nas-field .btn { justify-content: center; }
+/* The location itself, in the panel. Monospace because it is a path
+   and character-by-character accuracy is the whole point; wrapped
+   rather than truncated because this is the one place it must be
+   readable and selectable in full. */
+.doc-location {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-3);
+  word-break: break-all;
+  user-select: all;
 }
 
 /* ===========================
@@ -1860,14 +1870,6 @@ h1, h2, h3, h4, h5, h6 {
   /* Filter bars */
   .filter-bar { gap: var(--space-2); }
   .search-bar input { width: 180px; }
-
-  /* Doc items — a document on the NAS carries six actions, and at the
-     38px touch size above they want ~250px of the row. Left inline
-     that squeezes the name and path to nothing, so from here down the
-     actions take a full-width basis and drop onto their own line,
-     the same way .comment-item stacks. */
-  .doc-item { flex-wrap: wrap; }
-  .doc-actions { flex-basis: 100%; justify-content: flex-end; }
 
   /* Tabs */
   .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
