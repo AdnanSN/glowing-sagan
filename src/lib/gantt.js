@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import {
-  addDays, differenceInDays, endOfWeek, format, parseISO, startOfWeek,
+  addDays, differenceInDays, endOfWeek, format, parseISO, startOfDay, startOfWeek,
 } from 'date-fns'
 
 // Geometry and date plumbing shared by the two timeline pages
@@ -54,6 +54,50 @@ export function rgba(hex, alpha) {
 /** Left edge, in pixels, of `date` on a chart that starts at `rangeStart`. */
 export function dateToX(date, rangeStart, cellW, unitDays) {
   return (differenceInDays(date, rangeStart) / unitDays) * cellW
+}
+
+/**
+ * True when a line's due date has gone by and nothing has marked it
+ * finished. Compared day to day, so something due today is not yet late.
+ */
+export function isOverdue(task, today = new Date()) {
+  if (!task) return false
+  if (task.status === 'Done' || (Number(task.progress) || 0) >= 100) return false
+  const due = task._tempEnd || safeDate(task.due_date)
+  return !!due && startOfDay(due) < startOfDay(today)
+}
+
+/**
+ * The stretch of chart between a missed due date and today.
+ *
+ * A late line drawn only where it was scheduled shrinks into the past
+ * and gets scrolled off the side of the screen, which is exactly the
+ * line you most need to see. So the bar sprouts a tail that runs to
+ * today and keeps growing until somebody closes the task: three weeks
+ * late reads as three weeks wide.
+ *
+ * Deliberately separate from the bar itself — the bar still covers the
+ * dates the task actually holds, which is what dragging and resizing
+ * edit. Null when the line is finished, still in time, or its tail
+ * falls outside the window on view.
+ */
+export function slipGeom(task, rangeStart, cellW, unitDays, totalW, today = new Date()) {
+  if (!isOverdue(task, today)) return null
+  const due = startOfDay(task._tempEnd || safeDate(task.due_date))
+  const from = addDays(due, 1)                    // the morning after it was due
+  const to   = addDays(startOfDay(today), 1)      // through the end of today
+  const days = differenceInDays(to, from)
+  if (days < 1) return null
+
+  const x1 = dateToX(from, rangeStart, cellW, unitDays)
+  const x2 = dateToX(to,   rangeStart, cellW, unitDays)
+  if (x2 <= 0 || x1 >= totalW) return null
+
+  const left = clamp(x1, 0, totalW)
+  const w = clamp(x2, 0, totalW) - left
+  if (w < 1) return null
+
+  return { x: left, w, days, due, clippedLeft: x1 < 0, clippedRight: x2 > totalW }
 }
 
 /** Pixels dragged → whole days moved. Bars always snap to a day. */

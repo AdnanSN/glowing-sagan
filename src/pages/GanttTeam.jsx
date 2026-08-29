@@ -17,8 +17,8 @@ import {
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 import {
   SCALES, buildColumns, buildMonthGroups, clamp, dateToCol, dateToX, durationDays,
-  linkStatusAndProgress, markedColumns, pxToDays, rgba, safeDate, toISO,
-  useCompact, xToCol,
+  isOverdue, linkStatusAndProgress, markedColumns, pxToDays, rgba, safeDate,
+  slipGeom, toISO, useCompact, xToCol,
 } from '../lib/gantt'
 import { fetchNoteMarks } from '../lib/notes'
 
@@ -360,8 +360,7 @@ export function GanttTeam() {
   )
 
   const openCount = visibleTasks.filter(t => t.status !== 'Done').length
-  const overdueCount = visibleTasks.filter(t =>
-    t.status !== 'Done' && safeDate(t.due_date) && safeDate(t.due_date) < new Date()).length
+  const overdueCount = visibleTasks.filter(t => isOverdue(t)).length
 
   return (
     <div className="gantt-page">
@@ -525,6 +524,8 @@ export function GanttTeam() {
                   }
                   const task = row.task
                   const geo = taskGeom(task)
+                  /* Late lines keep growing to today — see slipGeom. */
+                  const slip = slipGeom(task, range.start, cellW, unitDays, totalW)
                   const marked = markedColumns(noteMarks.get(task.id), range.start, unitDays, columns.length)
                   const picked = noteCell?.taskId === task.id
                     ? dateToCol(noteCell.start, range.start, unitDays)
@@ -542,6 +543,17 @@ export function GanttTeam() {
                     >
                       {picked >= 0 && picked < columns.length && (
                         <div className="gantt-cell-pick" style={{ left: picked * cellW, width: cellW }} />
+                      )}
+
+                      {slip && (
+                        <div
+                          className={`gantt-bar-slip${slip.clippedRight ? ' clip-r' : ''}`}
+                          style={{ left: slip.x, width: slip.w, height: rowHeight(row) - 14, top: 7 }}
+                          title={`${task.title}
+Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due, 'd MMM yyyy')}`}
+                        >
+                          {slip.w > 34 && <span className="gantt-slip-label">{slip.days}d late</span>}
+                        </div>
                       )}
 
                       {geo && (
@@ -673,8 +685,7 @@ function TeamLabelRow({ row, cols, height, collapsed, onToggle, onOpen, canEdit 
 
   if (row.type === 'member') {
     const { employee, tasks } = row.group
-    const overdue = tasks.filter(t =>
-      t.status !== 'Done' && safeDate(t.due_date) && safeDate(t.due_date) < new Date()).length
+    const overdue = tasks.filter(t => isOverdue(t)).length
     const open = tasks.filter(t => t.status !== 'Done').length
 
     return (
@@ -703,7 +714,7 @@ function TeamLabelRow({ row, cols, height, collapsed, onToggle, onOpen, canEdit 
 
   const task = row.task
   const due = safeDate(task.due_date)
-  const overdue = due && due < new Date() && task.status !== 'Done'
+  const overdue = isOverdue(task)
   const pct = clamp(Number(task.progress) || 0, 0, 100)
 
   return (
@@ -744,7 +755,7 @@ function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
   const color = task.project?.color || '#4B5563'
   const pct = clamp(Number(task.progress) || 0, 0, 100)
   const done = task.status === 'Done' || pct >= 100
-  const overdue = !done && safeDate(task.due_date) && safeDate(task.due_date) < new Date()
+  const overdue = isOverdue(task)
   const showLabel = geo.w > 70
 
   return (

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { format, isSameDay } from 'date-fns'
-import { MessageSquare, X, Trash2, Pencil, Check, AlertCircle } from 'lucide-react'
+import { differenceInDays, format, isSameDay, startOfDay } from 'date-fns'
+import {
+  MessageSquare, X, Trash2, Pencil, Check, AlertCircle, ChevronDown, Lock,
+} from 'lucide-react'
 import { Avatar } from './Avatar'
 import { useAuth } from '../lib/AuthContext'
-import { safeDate } from '../lib/gantt'
+import { durationDays, isOverdue, safeDate } from '../lib/gantt'
 import { addNote, deleteNote, fetchTaskNotes, noteDay, updateNote } from '../lib/notes'
 
 /* ────────────────────────────────────────────────────────────────
@@ -17,7 +19,19 @@ import { addNote, deleteNote, fetchTaskNotes, noteDay, updateNote } from '../lib
    note is that you are reading the chart, and a dialog over the top of
    the thing you are annotating would mean closing it to look at the
    next square. Clicking another square just swaps what is in here.
+
+   Under the notes sits the line item itself — status, dates, who has
+   it — because the question a square raises is usually about the task,
+   and reading it off a 40-pixel bar is not reading. It is a read-out,
+   not a form: double-clicking the row still opens the editor.
    ──────────────────────────────────────────────────────────────── */
+
+const STATUS_TONE = {
+  'To Do':       { bg: '#F3F4F6',              color: '#6B7280' },
+  'In Progress': { bg: 'var(--info-light)',    color: 'var(--info)' },
+  'In Review':   { bg: 'var(--warning-light)', color: 'var(--warning)' },
+  'Done':        { bg: 'var(--success-light)', color: 'var(--success)' },
+}
 
 export function TaskNotesPanel({ task, cell, onClose, onNotesChanged, subtitle }) {
   const { user, userEmployee, profile, hasPermission } = useAuth()
@@ -293,6 +307,115 @@ export function TaskNotesPanel({ task, cell, onClose, onNotesChanged, subtitle }
       {!canWrite && (
         <div className="gantt-notes-foot">Your role can read notes but not write them.</div>
       )}
+
+      <TaskDetails task={task} canEdit={hasPermission('manage_tasks')} />
     </aside>
+  )
+}
+
+/**
+ * The line item behind the square, read-only. Collapsible because on a
+ * laptop the notes and this are competing for the same 500 pixels, and
+ * which one you want depends on why you opened the panel.
+ */
+function TaskDetails({ task, canEdit }) {
+  const [open, setOpen] = useState(true)
+
+  const start = safeDate(task.start_date)
+  const due   = safeDate(task.due_date)
+  const days  = durationDays(task.start_date, task.due_date)
+  const late  = isOverdue(task)
+  const lateBy = late ? differenceInDays(startOfDay(new Date()), startOfDay(due)) : 0
+  const pct   = Math.max(0, Math.min(100, Number(task.progress) || 0))
+  const tone  = STATUS_TONE[task.status] || STATUS_TONE['To Do']
+
+  return (
+    <div className="gantt-details">
+      <button
+        className="gantt-details-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+      >
+        <ChevronDown size={13} style={{ transform: open ? 'none' : 'rotate(-90deg)' }} />
+        <span>Task details</span>
+        {!open && (
+          <span className="gantt-details-peek" style={{ color: tone.color }}>
+            {task.status} · {pct}%
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="gantt-details-body">
+          <dl className="gantt-details-grid">
+            <dt>Status</dt>
+            <dd>
+              <span className="gantt-details-chip" style={{ background: tone.bg, color: tone.color }}>
+                {task.status}
+              </span>
+            </dd>
+
+            <dt>Priority</dt>
+            <dd className={`gantt-details-priority priority-${String(task.priority || '').toLowerCase()}`}>
+              <span className="priority-dot" />{task.priority || '—'}
+            </dd>
+
+            <dt>Progress</dt>
+            <dd className="gantt-details-progress">
+              <span className="progress-bar-container">
+                <span className="progress-bar-fill" style={{ display: 'block', width: `${pct}%` }} />
+              </span>
+              <span className="gantt-details-pct">{pct}%</span>
+            </dd>
+
+            <dt>Start</dt>
+            <dd>{start ? format(start, 'd MMM yyyy') : '—'}</dd>
+
+            <dt>Due</dt>
+            <dd className={late ? 'gantt-details-late' : undefined}>
+              {due ? format(due, 'd MMM yyyy') : '—'}
+              {late && <span className="gantt-details-lateby">{lateBy}d late</span>}
+            </dd>
+
+            <dt>Duration</dt>
+            <dd>{days ? `${days} day${days === 1 ? '' : 's'}` : '—'}</dd>
+
+            <dt>Assignee</dt>
+            <dd className="gantt-details-person">
+              {task.assignee ? (
+                <>
+                  <Avatar
+                    name={task.assignee.name}
+                    src={task.assignee.avatar_url}
+                    color={task.assignee.color}
+                    size="sm"
+                  />
+                  <span>{task.assignee.name}</span>
+                </>
+              ) : 'Unassigned'}
+            </dd>
+
+            {/* Only one of these is ever set per page — the project
+                timeline groups by stage, the team schedule spans
+                projects — so whichever is there is the one that
+                places the line. */}
+            {task.stage && (<><dt>Stage</dt><dd>{task.stage}</dd></>)}
+            {task.project?.name && (<><dt>Project</dt><dd>{task.project.name}</dd></>)}
+          </dl>
+
+          {task.description && <p className="gantt-details-desc">{task.description}</p>}
+
+          {task.is_confidential && (
+            <div className="gantt-details-locked">
+              <Lock size={11} /> Principal Architects only
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="gantt-details-hint">Double-click the row to edit it.</div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

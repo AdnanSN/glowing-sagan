@@ -1402,6 +1402,140 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ===========================
+   TEAM PAGE — roster and teams
+   =========================== */
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-5);
+}
+
+/* A team's own colour reads down its left edge, the way a project
+   card carries its project colour. */
+.team-card {
+  padding: var(--space-5);
+  border-left: 3px solid var(--team-color, var(--accent-primary));
+}
+
+.team-project-tag {
+  text-decoration: none;
+  transition: var(--transition);
+}
+.team-project-tag:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.team-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.team-member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.team-member-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-member-role {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* The teams one person belongs to, on their roster card. */
+.team-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.team-chip:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.team-chip-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+}
+
+/* Who is in the team, in the editor. Scrolls rather than pushing the
+   modal's buttons off the bottom on a long roster. */
+.member-picker {
+  /* Never more than a third or so of a short window — the notes are
+     what the panel is for. */
+  max-height: min(260px, 34vh);
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+}
+
+.member-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.member-picker-row:last-child { border-bottom: none; }
+.member-picker-row:hover { background: var(--bg-tertiary); }
+.member-picker-row.selected { background: var(--accent-light); }
+
+.member-picker-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.member-picker-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-picker-role {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ===========================
    TABS
    =========================== */
 .tabs {
@@ -3653,6 +3787,42 @@ h1, h2, h3, h4, h5, h6 {
 .gantt-bar.dateless { border-style: dashed; }
 .gantt-bar.clip-l { border-left: none; }
 .gantt-bar.clip-r { border-right: none; }
+
+/* An overdue line does not sit still: past its due date the bar sprouts
+   a hatched tail running to today, so a job three weeks late is drawn
+   three weeks wide and cannot be scrolled past. Kept as its own element
+   rather than widening the bar — the bar still covers the dates the task
+   actually holds, which is what dragging and resizing edit. */
+.gantt-bar-slip {
+  position: absolute;
+  /* Under the picked-day highlight (3) and the bar (4): the tail is an
+     annotation on the row, not something you point at. */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  /* Centred, not tucked against the right edge: that edge is where the
+     today line lands, and it would strike straight through the text. */
+  justify-content: center;
+  overflow: hidden;
+  border: 1px dashed var(--danger);
+  border-left: none;
+  background-color: var(--danger-light);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(192, 40, 28, 0.18) 0 3px,
+    rgba(192, 40, 28, 0) 3px 7px
+  );
+}
+.gantt-bar-slip.clip-r { border-right: none; }
+.gantt-slip-label {
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  color: var(--danger);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .gantt-bar-fill {
   position: absolute;
   left: 0;
@@ -4054,9 +4224,118 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
+/* ── the line item, under its notes ──
+   Read-only on purpose: the row is still where a task is edited. Capped
+   and scrollable so a long description cannot push the notes off the
+   panel, and collapsible for when it does not matter. */
+.gantt-details {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-medium);
+  background: var(--bg-tertiary);
+}
+.gantt-details-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.gantt-details-toggle:hover { color: var(--text-primary); }
+.gantt-details-toggle svg { transition: transform 0.15s; flex-shrink: 0; }
+.gantt-details-peek {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.gantt-details-body {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0 var(--space-4) var(--space-3);
+}
+.gantt-details-grid {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  align-items: center;
+  gap: 5px var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.gantt-details-grid dt {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.gantt-details-grid dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.gantt-details-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+}
+.gantt-details-priority { display: flex; align-items: center; gap: 6px; }
+.gantt-details-progress { display: flex; align-items: center; gap: var(--space-2); }
+.gantt-details-progress .progress-bar-container { flex: 1; min-width: 0; }
+.gantt-details-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+.gantt-details-person { display: flex; align-items: center; gap: 6px; }
+.gantt-details-late { color: var(--danger); font-weight: var(--fw-bold); }
+.gantt-details-lateby {
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: var(--danger-light);
+  font-size: 10px;
+}
+.gantt-details-desc {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-light);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gantt-details-locked {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--space-2);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  color: var(--warning);
+}
+.gantt-details-hint {
+  margin-top: var(--space-2);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 /* A laptop has no room for both the frozen columns and a 340px panel. */
 @media (max-width: 1080px) {
   .gantt-notes { width: 300px; }
+  .gantt-details-body { max-height: min(200px, 34vh); }
 }
 
 /* Below 768px the sidebar folds away and a 60px topbar takes its place. */

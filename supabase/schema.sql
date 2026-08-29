@@ -5,8 +5,10 @@
 -- order instead: migration_v2_auth.sql, migration_v3_self_signup.sql,
 -- migration_v4_avatars.sql, migration_v5_folders.sql,
 -- migration_v6_project_stages.sql, migration_v7_drop_budget.sql,
--- migration_v8_confidential.sql, migration_v9_gantt.sql, then
--- migration_v10_site_photos.sql.
+-- migration_v8_confidential.sql, migration_v9_gantt.sql,
+-- migration_v10_site_photos.sql, migration_v11_task_notes.sql,
+-- migration_v12_nas_links.sql, migration_v13_remove_nas_links.sql,
+-- then migration_v14_teams.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -79,6 +81,48 @@ create table if not exists projects (
   updated_at timestamptz default now(),
   constraint projects_stages_not_empty check (array_length(stages, 1) >= 1)
 );
+
+-- TEAMS (a named group cut out of the roster — usually the people on
+-- one job. Sits here rather than up with employees because it
+-- references projects. See migration_v14_teams.sql for the reasoning;
+-- the short version is that membership is its own row so one person
+-- can be on as many teams as their week actually involves, and the
+-- project link is optional so a standing group can outlive any job.)
+create table if not exists teams (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  purpose text,                             -- optional one-liner
+  color text not null default '#0041C2',
+  -- SET NULL: deleting a project never deletes the team that worked
+  -- on it; the team survives unattached.
+  project_id uuid references projects(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Unique per project: "Design Team" on two jobs is two real teams, two
+-- on the same job is a mistake. COALESCE gives unattached teams their
+-- own namespace, since NULLs would otherwise all count as distinct.
+create unique index if not exists teams_name_per_project_unique
+  on teams (
+    lower(name),
+    coalesce(project_id, '00000000-0000-0000-0000-000000000000'::uuid)
+  );
+
+create index if not exists teams_project_idx on teams (project_id);
+
+-- TEAM MEMBERSHIP — the composite key is the rule: once per team,
+-- any number of teams.
+create table if not exists team_members (
+  team_id     uuid not null references teams(id)     on delete cascade,
+  employee_id uuid not null references employees(id) on delete cascade,
+  added_at    timestamptz not null default now(),
+  primary key (team_id, employee_id)
+);
+
+-- The primary key covers team → people; this is "which teams is this
+-- person in", which the roster asks once per card.
+create index if not exists team_members_employee_idx
+  on team_members (employee_id);
 
 -- TASKS
 create table if not exists tasks (
@@ -291,6 +335,22 @@ revoke all on function public.folder_is_confidential(uuid) from public, anon;
 revoke all on function public.project_visible(uuid)        from public, anon;
 grant execute on function public.folder_is_confidential(uuid) to authenticated;
 grant execute on function public.project_visible(uuid)        to authenticated;
+
+-- Is this team's project one you are allowed to see? A team on a
+-- confidential job would otherwise name that job in a list anyone can
+-- read. project_visible() answers true for a null project, so an
+-- unattached team is visible to everyone approved.
+create or replace function public.team_visible(p_team uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.teams t
+     where t.id = p_team
+       and public.project_visible(t.project_id)
+  );
+$$;
+
+revoke all on function public.team_visible(uuid) from public, anon;
+grant execute on function public.team_visible(uuid) to authenticated;
 
 -- "Is this employee row me?" Used by the site-photo policies below and
 -- by the storage policies at the bottom of this file. Definer so it can
@@ -537,6 +597,8 @@ grant execute on function public.admin_delete_user(uuid) to authenticated;
 alter table employees       enable row level security;
 alter table project_folders enable row level security;
 alter table projects   enable row level security;
+alter table teams        enable row level security;
+alter table team_members enable row level security;
 alter table tasks      enable row level security;
 alter table task_notes enable row level security;
 alter table milestones enable row level security;
@@ -564,6 +626,19 @@ create policy "admin delete profiles" on profiles for delete to authenticated
 create policy "read employees" on employees for select to authenticated
   using (public.is_approved());
 create policy "admin write employees" on employees for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+-- TEAMS — same ladder as the roster they are cut from: everyone
+-- approved reads, admins write. A team on a confidential project is
+-- hidden along with it.
+create policy "read teams" on teams for select to authenticated
+  using (public.is_approved() and public.project_visible(project_id));
+create policy "admin write teams" on teams for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+create policy "read team members" on team_members for select to authenticated
+  using (public.is_approved() and public.team_visible(team_id));
+create policy "admin write team members" on team_members for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
 -- Confidential rows are admin-only throughout: the checks below are

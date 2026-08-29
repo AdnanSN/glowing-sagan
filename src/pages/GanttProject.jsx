@@ -14,7 +14,7 @@ import { projectStages, STAGE_COLORS, TASK_STATUSES, PRIORITIES } from '../lib/c
 import {
   SCALES, buildColumns, buildMonthGroups, byPosition, clamp, dateToCol, dateToX,
   durationDays, linkStatusAndProgress, markedColumns, padToWeeks, pxToDays, rgba,
-  rollUp, safeDate, toISO, useCompact, xToCol,
+  isOverdue, rollUp, safeDate, slipGeom, toISO, useCompact, xToCol,
 } from '../lib/gantt'
 import { fetchNoteMarks } from '../lib/notes'
 
@@ -216,6 +216,9 @@ export function GanttProject() {
     push(project?.start_date); push(project?.end_date)
     tasks.forEach(t => { push(t.start_date); push(t.due_date) })
     milestones.forEach(m => push(m.due_date))
+    /* A chart that stops before today would clip the overdue tails off
+       at the edge, right where the whole point of them starts. */
+    if (tasks.some(t => isOverdue(t))) dates.push(new Date())
 
     if (!dates.length) {
       const today = new Date()
@@ -1112,6 +1115,8 @@ function ChartRow({
 
   const task = row.task
   const geo = taskGeom(task)
+  /* Late lines keep growing to today — see slipGeom. */
+  const slip = slipGeom(task, rangeStart, cellW, unitDays, totalW)
   const color = row.group.color
   const colCount = Math.round(totalW / cellW)
   const marked = markedColumns(noteDays, rangeStart, unitDays, colCount)
@@ -1128,6 +1133,17 @@ function ChartRow({
     >
       {picked && (
         <div className="gantt-cell-pick" style={{ left: selectedCol * cellW, width: cellW }} />
+      )}
+
+      {slip && (
+        <div
+          className={`gantt-bar-slip${slip.clippedRight ? ' clip-r' : ''}`}
+          style={{ left: slip.x, width: slip.w, height: height - 16, top: 8 }}
+          title={`${task.title}
+Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due, 'd MMM yyyy')}`}
+        >
+          {slip.w > 34 && <span className="gantt-slip-label">{slip.days}d late</span>}
+        </div>
       )}
 
       {geo && (
@@ -1157,7 +1173,7 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
   const [hover, setHover] = useState(false)
   const pct = clamp(Number(task.progress) || 0, 0, 100)
   const done = pct >= 100 || task.status === 'Done'
-  const overdue = !done && safeDate(task.due_date) && safeDate(task.due_date) < new Date()
+  const overdue = isOverdue(task)
   const showLabel = geo.w > 64
 
   return (
