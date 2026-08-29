@@ -243,6 +243,7 @@ export function GanttTeam() {
     }
     await patchTask(editRow.id, {
       title: editRow.title,
+      description: editRow.description || '',
       start_date: editRow.start_date || null,
       due_date: editRow.due_date || null,
       status: editRow.status,
@@ -259,6 +260,7 @@ export function GanttTeam() {
       ...task,
       start_date: task.start_date || '',
       due_date: task.due_date || '',
+      description: task.description || '',
       assignee_ids: assigneeIdsOf(task),
       progress: task.progress ?? 0,
       _originalAssignees: assigneeIdsOf(task),
@@ -641,6 +643,16 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
               <label className="form-label">Task Title *</label>
               <input className="form-input" value={editRow.title}
                 onChange={e => setEditRow(r => ({ ...r, title: e.target.value }))} />
+            </div>
+            {/* Same reasoning as the project timeline's: a title has
+                to fit a narrow column and a bar, and everything that
+                will not ends up here. */}
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea className="form-textarea" placeholder="Add details…"
+                style={{ minHeight: 68 }}
+                value={editRow.description}
+                onChange={e => setEditRow(r => ({ ...r, description: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Assigned to</label>

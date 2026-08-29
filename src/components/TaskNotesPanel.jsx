@@ -21,10 +21,13 @@ import { addNote, deleteNote, fetchTaskNotes, noteDay, updateNote } from '../lib
    the thing you are annotating would mean closing it to look at the
    next square. Clicking another square just swaps what is in here.
 
-   Under the notes sits the line item itself — status, dates, who has
-   it — because the question a square raises is usually about the task,
-   and reading it off a 40-pixel bar is not reading. It is a read-out,
-   not a form: double-clicking the row still opens the editor.
+   Above the notes sits the line item itself — status, dates, who has
+   it, what it actually says — because the question a square raises is
+   usually about the task, and reading it off a 40-pixel bar is not
+   reading. It sits above rather than below because it is the context
+   you read the notes against, and anything under a scrolling list is
+   something nobody finds. It is a read-out, not a form: double-clicking
+   the row still opens the editor.
    ──────────────────────────────────────────────────────────────── */
 
 const STATUS_TONE = {
@@ -208,6 +211,8 @@ export function TaskNotesPanel({ task, cell, onClose, onNotesChanged, subtitle }
         </div>
       )}
 
+      <TaskDetails task={task} canEdit={hasPermission('manage_tasks')} />
+
       <div className="gantt-notes-list" ref={listRef}>
         {loading && <div className="gantt-notes-empty">Loading notes…</div>}
 
@@ -308,8 +313,6 @@ export function TaskNotesPanel({ task, cell, onClose, onNotesChanged, subtitle }
       {!canWrite && (
         <div className="gantt-notes-foot">Your role can read notes but not write them.</div>
       )}
-
-      <TaskDetails task={task} canEdit={hasPermission('manage_tasks')} />
     </aside>
   )
 }
@@ -403,7 +406,12 @@ function TaskDetails({ task, canEdit }) {
             {task.project?.name && (<><dt>Project</dt><dd>{task.project.name}</dd></>)}
           </dl>
 
-          {task.description && <p className="gantt-details-desc">{task.description}</p>}
+          {task.description && (
+            <div className="gantt-details-desc">
+              <span className="gantt-details-desc-head">Description</span>
+              <p>{task.description}</p>
+            </div>
+          )}
 
           {task.is_confidential && (
             <div className="gantt-details-locked">

@@ -343,6 +343,7 @@ export function GanttProject() {
   function openRow(task) {
     setEditRow({
       ...task,
+      description: task.description || '',
       assignee_ids: assigneeIdsOf(task),
       start_date: task.start_date || '',
       due_date: task.due_date || '',
@@ -356,6 +357,7 @@ export function GanttProject() {
     await patchAssignees(editRow.id, editRow.assignee_ids)
     await patchTask(editRow.id, {
       title: editRow.title,
+      description: editRow.description || '',
       start_date: editRow.start_date || null,
       due_date: editRow.due_date || null,
       status: editRow.status,
@@ -711,6 +713,18 @@ export function GanttProject() {
               <label className="form-label">Task Title *</label>
               <input className="form-input" value={editRow.title}
                 onChange={e => setEditRow(r => ({ ...r, title: e.target.value }))} />
+            </div>
+            {/* The line's own note. A title has to fit a 216px column
+                and a bar, so anything that will not — the drawing
+                numbers, what the client actually asked for — ends up
+                here, and this dialog is the only place on the chart
+                with room to read it. */}
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea className="form-textarea" placeholder="Add details…"
+                style={{ minHeight: 68 }}
+                value={editRow.description}
+                onChange={e => setEditRow(r => ({ ...r, description: e.target.value }))} />
             </div>
             <div className="form-group">
               <label className="form-label">Assigned To</label>

@@ -913,7 +913,12 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 580px;
   max-height: 90vh;
-  overflow-y: auto;
+  /* The body scrolls, not the whole dialog: on a laptop the longer
+     forms are taller than 90vh, and a Save button that has scrolled off
+     the bottom of a dialog reads as a dialog with no way out. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   animation: slideUp 0.25s ease;
 }
 
@@ -922,6 +927,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .modal-header {
+  flex-shrink: 0;
   padding: var(--space-6);
   border-bottom: 1px solid var(--border-light);
   display: flex;
@@ -964,9 +970,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .modal-body {
   padding: var(--space-6);
+  overflow-y: auto;
 }
 
 .modal-footer {
+  flex-shrink: 0;
   padding: var(--space-5) var(--space-6);
   border-top: 1px solid var(--border-light);
   display: flex;
