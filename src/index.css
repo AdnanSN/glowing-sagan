@@ -870,6 +870,19 @@ h1, h2, h3, h4, h5, h6 {
 .form-textarea::placeholder { color: var(--text-muted); }
 
 .form-textarea { resize: vertical; min-height: 88px; }
+
+/* The short select for filter bars, where one sits beside a 36px search
+   box. Pinning a height is not enough on its own: a closed <select>
+   gets no say in its line-height — Chrome forces `normal` — so its
+   value always needs the font's full height, which in Poppins is about
+   1.45em, 19px at our 13px. Keep the 10px of vertical padding and a
+   36px box leaves 14px for it, and what goes is the bottom of the
+   type: every g, j, p, q and y beheaded. Height instead of padding. */
+.form-select-sm {
+  width: auto;
+  height: 36px;
+  padding-block: 0;
+}
 .form-hint { font-size: var(--text-xs); color: var(--text-muted); }
 
 .form-row {
@@ -1382,6 +1395,10 @@ h1, h2, h3, h4, h5, h6 {
   padding-left: 36px;
   width: 260px;
   height: 38px;
+  /* Same trade as .form-select-sm: a fixed height and the inherited
+     10px of vertical padding together leave the type less room than it
+     needs, and the descenders are what get cut. */
+  padding-block: 0;
 }
 
 .search-bar svg {

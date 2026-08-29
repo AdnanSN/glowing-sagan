@@ -173,17 +173,17 @@ export function Tasks() {
             <input className="form-input" placeholder="Search tasks…" value={search}
               onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="form-select" style={{ width: 'auto', height: 36 }} value={filterProject}
+          <select className="form-select form-select-sm" value={filterProject}
             onChange={e => setFilterProject(e.target.value)}>
             <option value="All">All Projects</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <select className="form-select" style={{ width: 'auto', height: 36 }} value={filterAssignee}
+          <select className="form-select form-select-sm" value={filterAssignee}
             onChange={e => setFilterAssignee(e.target.value)}>
             <option value="All">All Assignees</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <select className="form-select" style={{ width: 'auto', height: 36 }} value={filterDue}
+          <select className="form-select form-select-sm" value={filterDue}
             onChange={e => setFilterDue(e.target.value)}>
             {DUE_FILTERS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>

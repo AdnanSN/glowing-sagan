@@ -137,7 +137,7 @@ export function Documents() {
 
       <div className="page-body">
         <div className="filter-bar">
-          <select className="form-select" style={{ width: 'auto', height: 36 }} value={filterProject}
+          <select className="form-select form-select-sm" value={filterProject}
             onChange={e => setFilterProject(e.target.value)}>
             <option value="All">All Projects</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
