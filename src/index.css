@@ -4143,6 +4143,108 @@ h1, h2, h3, h4, h5, h6 {
 .gantt-due { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .gantt-due-overdue { color: var(--danger); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 
+/* ── legend ──
+   The key to the marks, docked under the chart. Every swatch is built
+   from the same tints and borders as the thing it stands for, so the
+   two cannot drift apart in appearance without somebody noticing. The
+   neutral grey is the bar colour a task falls back to when it has no
+   project of its own. */
+.gantt-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-6);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-light);
+}
+.gantt-legend-title {
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.gantt-legend-item { display: flex; align-items: center; gap: 7px; }
+.gantt-legend-label { font-size: var(--text-xs); color: var(--text-secondary); white-space: nowrap; }
+.gantt-legend-pair { display: flex; align-items: center; gap: 5px; }
+
+/* A bar in miniature: same 16% tint, same 55% fill, same one-pixel
+   border as .gantt-bar, at a size that sits on a line of text. */
+.gantt-legend-bar {
+  position: relative;
+  width: 26px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid rgba(75, 85, 99, 0.6);
+  background: rgba(75, 85, 99, 0.16);
+}
+.gantt-legend-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 55%;
+  background: rgba(75, 85, 99, 0.55);
+}
+.gantt-legend-bar.overdue { border: 2px solid var(--danger); }
+.gantt-legend-bar.dateless { border-style: dashed; }
+.gantt-legend-bar.clip { border-right: none; }
+.gantt-legend-bar.done { border-color: rgba(15, 123, 85, 0.6); background: rgba(15, 123, 85, 0.16); }
+.gantt-legend-bar.done .gantt-legend-bar-fill { background: rgba(15, 123, 85, 0.55); }
+
+/* The hatched tail, at legend size — see .gantt-bar-slip. */
+.gantt-legend-slip {
+  width: 26px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px dashed var(--danger);
+  background-color: var(--danger-light);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(192, 40, 28, 0.18) 0 3px,
+    rgba(192, 40, 28, 0) 3px 7px
+  );
+}
+
+.gantt-legend-stage {
+  position: relative;
+  width: 26px;
+  height: 8px;
+  flex-shrink: 0;
+  border: 1px solid rgba(75, 85, 99, 0.5);
+  background: rgba(75, 85, 99, 0.14);
+}
+.gantt-legend-stage-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 55%;
+  background: rgba(75, 85, 99, 0.4);
+}
+
+.gantt-legend-diamond {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  background: var(--accent-primary);
+  transform: rotate(45deg);
+}
+.gantt-legend-diamond.done { background: var(--success); }
+
+.gantt-legend-today { width: 2px; height: 13px; flex-shrink: 0; background: var(--danger); }
+
+/* The corner fold, squared up so it reads at this size. */
+.gantt-legend-note {
+  width: 0;
+  height: 0;
+  flex-shrink: 0;
+  border-top: 9px solid var(--accent-primary);
+  border-left: 9px solid transparent;
+}
+
 /* ── notes on a square ──
    Click a day on a line item and its notes open beside the chart.
    Docked rather than modal: the reason to write a note is that you are
@@ -4496,6 +4598,7 @@ h1, h2, h3, h4, h5, h6 {
   .gantt-sheet-fields { grid-template-columns: 1fr; }
   .gantt-sheet-summary { padding-left: 0; border-left: none; }
   .gantt-project-select { width: 100%; }
+  .gantt-legend { gap: var(--space-2) var(--space-4); padding: var(--space-2) var(--space-4); }
   .gantt-search-input { width: 110px; }
 
   /* On a phone there is nothing to dock beside, so the panel takes the

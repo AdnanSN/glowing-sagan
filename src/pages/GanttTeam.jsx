@@ -6,6 +6,7 @@ import { Avatar } from '../components/Avatar'
 import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { Modal } from '../components/Modal'
 import { TaskNotesPanel } from '../components/TaskNotesPanel'
+import { GanttLegend } from '../components/GanttLegend'
 import {
   Users, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, AlertCircle, X,
   GripVertical, ChevronDown, Search,
@@ -619,6 +620,8 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
           />
         )}
       </div>
+
+      <GanttLegend variant="team" />
 
       {dragTip && (
         <div className="gantt-drag-tip" style={{ left: dragTip.x + 14, top: dragTip.y + 16 }}>

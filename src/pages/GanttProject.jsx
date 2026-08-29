@@ -5,6 +5,7 @@ import { RefreshButton } from '../components/RefreshButton'
 import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { Modal } from '../components/Modal'
 import { TaskNotesPanel } from '../components/TaskNotesPanel'
+import { GanttLegend } from '../components/GanttLegend'
 import {
   GanttChart, Plus, Trash2, ZoomIn, ZoomOut, CalendarClock,
   AlertCircle, X, Check, GripVertical,
@@ -691,6 +692,8 @@ export function GanttProject() {
         )}
       </div>
 
+      <GanttLegend variant="project" />
+
       {dragTip && (
         <div className="gantt-drag-tip" style={{ left: dragTip.x + 14, top: dragTip.y + 16 }}>
           {dragTip.text}
@@ -1201,11 +1204,11 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
 
   return (
     <div
-      className={`gantt-bar${dragging ? ' dragging' : ''}${hover ? ' hover' : ''}${done ? ' done' : ''}`}
+      className={`gantt-bar${dragging ? ' dragging' : ''}${hover ? ' hover' : ''}${done ? ' done' : ''}${overdue ? ' overdue' : ''}`}
       style={{
         left: geo.x, width: geo.w, height: height - 16, top: 8,
         background: rgba(done ? '#0F7B55' : color, 0.16),
-        borderColor: rgba(done ? '#0F7B55' : color, overdue ? 0.9 : 0.6),
+        borderColor: overdue ? 'var(--danger)' : rgba(done ? '#0F7B55' : color, 0.6),
         cursor: editable ? (dragging ? 'grabbing' : 'grab') : 'default',
       }}
       title={[
