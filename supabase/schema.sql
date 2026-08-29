@@ -154,6 +154,28 @@ create table if not exists tasks (
 create index if not exists tasks_project_stage_position_idx
   on tasks (project_id, stage, position);
 
+-- TASK ASSIGNEES (who is on a line item — more than one person, which
+-- assignee_id alone could never say. See migration_v15_task_assignees.sql.
+-- tasks.assignee_id survives as the LEAD: the first name on this list,
+-- derived by the trigger below, for every surface with room for exactly
+-- one face. Write this table; that column follows.)
+create table if not exists task_assignees (
+  task_id     uuid not null references tasks(id)     on delete cascade,
+  employee_id uuid not null references employees(id) on delete cascade,
+  -- The order the names were picked, which is also who the lead is.
+  -- Not a rank: it only makes "the one face we have room for" a stable
+  -- answer instead of whichever row came back first.
+  position    int  not null default 0,
+  created_at  timestamptz not null default now(),
+  primary key (task_id, employee_id)
+);
+
+-- "What is on Priya's plate", across every project.
+create index if not exists task_assignees_employee_idx
+  on task_assignees (employee_id);
+create index if not exists task_assignees_task_position_idx
+  on task_assignees (task_id, position);
+
 -- TASK NOTES (what happened on one day of one line item — written by
 -- clicking that square on either timeline chart. See
 -- migration_v11_task_notes.sql for the reasoning; the short version is
@@ -381,6 +403,47 @@ $$;
 revoke all on function public.task_visible(uuid) from public, anon;
 grant execute on function public.task_visible(uuid) to authenticated;
 
+-- tasks.assignee_id is the lead — the first name on task_assignees —
+-- and this is what keeps it that way. Definer so it can write `tasks`
+-- without re-entering that table's policies: the caller was already
+-- allowed to change the assignment by task_assignees' own policy, and
+-- this is only the consequence of that change.
+create or replace function public.sync_task_lead_assignee()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  -- Branching on the operation rather than coalescing NEW and OLD:
+  -- PL/pgSQL leaves NEW unassigned on a DELETE, and touching it there
+  -- is an error, not a null.
+  ids uuid[];
+begin
+  if tg_op = 'DELETE' then
+    ids := array[old.task_id];
+  elsif tg_op = 'INSERT' then
+    ids := array[new.task_id];
+  else
+    ids := array[new.task_id, old.task_id];
+  end if;
+
+  update public.tasks t
+     set assignee_id = (
+           select a.employee_id
+             from public.task_assignees a
+            where a.task_id = t.id
+            order by a.position, a.created_at
+            limit 1
+         )
+   where t.id = any(ids);
+  return null;
+end;
+$$;
+
+revoke all on function public.sync_task_lead_assignee() from public, anon;
+
+drop trigger if exists task_assignees_sync_lead on public.task_assignees;
+create trigger task_assignees_sync_lead
+  after insert or update or delete on public.task_assignees
+  for each row execute function public.sync_task_lead_assignee();
+
 -- Storage object names carry ids in their first path segment; a
 -- malformed path must fail the policy rather than raise a cast error.
 create or replace function public.try_uuid(t text)
@@ -600,6 +663,7 @@ alter table projects   enable row level security;
 alter table teams        enable row level security;
 alter table team_members enable row level security;
 alter table tasks      enable row level security;
+alter table task_assignees enable row level security;
 alter table task_notes enable row level security;
 alter table milestones enable row level security;
 alter table documents   enable row level security;
@@ -702,6 +766,16 @@ create policy "member write tasks" on tasks for all to authenticated
       or (not is_confidential and public.project_visible(project_id))
     )
   );
+
+-- TASK ASSIGNEES — an assignment is exactly as restricted as the task
+-- it is on, so a confidential line does not leak through the list of
+-- who is on it. Writing is member and above: putting somebody on a job
+-- is editing the job.
+create policy "read task assignees" on task_assignees for select to authenticated
+  using (public.is_approved() and public.task_visible(task_id));
+create policy "member write task assignees" on task_assignees for all to authenticated
+  using      (public.has_min_role('member') and public.task_visible(task_id))
+  with check (public.has_min_role('member') and public.task_visible(task_id));
 
 -- TASK NOTES — reading follows the task. Writing is member and above,
 -- the same rung that may edit the task itself. Editing is your own

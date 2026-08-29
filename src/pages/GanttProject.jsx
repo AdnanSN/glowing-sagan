@@ -17,6 +17,10 @@ import {
   isOverdue, rollUp, safeDate, slipGeom, toISO, useCompact, xToCol,
 } from '../lib/gantt'
 import { fetchNoteMarks } from '../lib/notes'
+import { AssigneePicker } from '../components/AssigneePicker'
+import {
+  ASSIGNEES_SELECT, assigneeIdsOf, assigneesFromIds, assigneesOf, setTaskAssignees,
+} from '../lib/assignees'
 
 /* ────────────────────────────────────────────────────────────────
    PROJECT TIMELINE
@@ -140,7 +144,7 @@ export function GanttProject() {
     setLoadingRows(true)
     const [t, m] = await Promise.all([
       supabase.from('tasks')
-        .select('*, assignee:employees(id,name,color,avatar_url)')
+        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
         .eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
     ])
@@ -256,17 +260,22 @@ export function GanttProject() {
     const current = tasks.find(t => t.id === id)
     const full = linkStatusAndProgress(patch, current)
 
-    // `assignee` is the joined row the bar draws its face from; the
-    // column that actually moves is assignee_id. Resolve the join here
-    // so the avatar changes with the save rather than on the next load
-    // — and keep it out of the payload, since it is not a column.
-    const local = 'assignee_id' in full
-      ? { ...full, assignee: employees.find(e => e.id === full.assignee_id) || null }
-      : full
-
-    setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...local } : t)))
+    setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...full } : t)))
     const { error: err } = await supabase.from('tasks')
       .update({ ...full, updated_at: new Date().toISOString() }).eq('id', id)
+    if (err) { setError(err.message); fetchRows(projectId) }
+  }
+
+  /* Who is on a line. Its own write because it is its own table — and
+     tasks.assignee_id, the face the bar draws, is derived from it by
+     the database rather than sent from here. The optimistic update
+     rebuilds the joined list so the row changes with the save instead
+     of on the next load. */
+  async function patchAssignees(id, employeeIds) {
+    setTasks(prev => prev.map(t => (
+      t.id === id ? { ...t, assignees: assigneesFromIds(employeeIds, employees) } : t
+    )))
+    const { error: err } = await setTaskAssignees(id, employeeIds)
     if (err) { setError(err.message); fetchRows(projectId) }
   }
 
@@ -286,7 +295,7 @@ export function GanttProject() {
       progress: 0,
       start_date: toISO(start),
       due_date: toISO(addDays(start, 4)),
-    }).select('*, assignee:employees(id,name,color,avatar_url)').single()
+    }).select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`).single()
 
     if (err) { setError(err.message); return }
     setTasks(prev => [...prev, data])
@@ -334,7 +343,7 @@ export function GanttProject() {
   function openRow(task) {
     setEditRow({
       ...task,
-      assignee_id: task.assignee_id || '',
+      assignee_ids: assigneeIdsOf(task),
       start_date: task.start_date || '',
       due_date: task.due_date || '',
       progress: task.progress ?? 0,
@@ -344,9 +353,9 @@ export function GanttProject() {
   async function saveDialog() {
     if (!editRow) return
     setSaving(true)
+    await patchAssignees(editRow.id, editRow.assignee_ids)
     await patchTask(editRow.id, {
       title: editRow.title,
-      assignee_id: editRow.assignee_id || null,
       start_date: editRow.start_date || null,
       due_date: editRow.due_date || null,
       status: editRow.status,
@@ -705,15 +714,11 @@ export function GanttProject() {
             </div>
             <div className="form-group">
               <label className="form-label">Assigned To</label>
-              <select className="form-select" value={editRow.assignee_id}
-                onChange={e => setEditRow(r => ({ ...r, assignee_id: e.target.value }))}>
-                <option value="">— Unassigned —</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name}{emp.role ? ` · ${emp.role}` : ''}
-                  </option>
-                ))}
-              </select>
+              <AssigneePicker
+                employees={employees}
+                value={editRow.assignee_ids}
+                onChange={ids => setEditRow(r => ({ ...r, assignee_ids: ids }))}
+              />
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -1189,7 +1194,9 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
         task.title,
         `${format(geo.start, 'd MMM yyyy')} → ${format(geo.end, 'd MMM yyyy')}`,
         `${pct}% complete · ${task.status}`,
-        task.assignee ? `Assigned to ${task.assignee.name}` : 'Unassigned',
+        assigneesOf(task).length
+          ? `Assigned to ${assigneesOf(task).map(p => p.name).join(', ')}`
+          : 'Unassigned',
       ].join('\n')}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -1208,10 +1215,7 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
 
       {showLabel && <span className="gantt-bar-label">{task.title}</span>}
 
-      {task.assignee && geo.w > 96 && (
-        <span className="gantt-bar-avatar" style={{ background: task.assignee.color }}
-          title={task.assignee.name}>{task.assignee.name.charAt(0)}</span>
-      )}
+      {geo.w > 96 && <BarFaces people={assigneesOf(task)} />}
 
       {editable && (
         <span className="gantt-bar-handle right"
@@ -1220,5 +1224,24 @@ function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen 
         </span>
       )}
     </div>
+  )
+}
+
+/* The faces on a bar. Two at most before it becomes a count: a bar is
+   26 pixels tall and the title has to stay readable, and past two the
+   useful answer is "and two others", which the tooltip spells out. */
+function BarFaces({ people }) {
+  if (!people.length) return null
+  const shown = people.slice(0, 2)
+  const extra = people.length - shown.length
+  return (
+    <span className="gantt-bar-faces" title={people.map(p => p.name).join(', ')}>
+      {shown.map(p => (
+        <span key={p.id} className="gantt-bar-avatar" style={{ background: p.color }}>
+          {p.name.charAt(0)}
+        </span>
+      ))}
+      {extra > 0 && <span className="gantt-bar-avatar more">+{extra}</span>}
+    </span>
   )
 }

@@ -6,6 +6,7 @@ import {
 import { Avatar } from './Avatar'
 import { useAuth } from '../lib/AuthContext'
 import { durationDays, isOverdue, safeDate } from '../lib/gantt'
+import { assigneesOf } from '../lib/assignees'
 import { addNote, deleteNote, fetchTaskNotes, noteDay, updateNote } from '../lib/notes'
 
 /* ────────────────────────────────────────────────────────────────
@@ -327,6 +328,7 @@ function TaskDetails({ task, canEdit }) {
   const late  = isOverdue(task)
   const lateBy = late ? differenceInDays(startOfDay(new Date()), startOfDay(due)) : 0
   const pct   = Math.max(0, Math.min(100, Number(task.progress) || 0))
+  const people = assigneesOf(task)
   const tone  = STATUS_TONE[task.status] || STATUS_TONE['To Do']
 
   return (
@@ -380,19 +382,17 @@ function TaskDetails({ task, canEdit }) {
             <dt>Duration</dt>
             <dd>{days ? `${days} day${days === 1 ? '' : 's'}` : '—'}</dd>
 
-            <dt>Assignee</dt>
-            <dd className="gantt-details-person">
-              {task.assignee ? (
-                <>
-                  <Avatar
-                    name={task.assignee.name}
-                    src={task.assignee.avatar_url}
-                    color={task.assignee.color}
-                    size="sm"
-                  />
-                  <span>{task.assignee.name}</span>
-                </>
-              ) : 'Unassigned'}
+            {/* Named in full rather than stacked: this is the one place
+                with room for it, and "who is actually on this" is half
+                of why the panel gets opened. */}
+            <dt>{people.length > 1 ? 'Assigned to' : 'Assignee'}</dt>
+            <dd className="gantt-details-people">
+              {people.length ? people.map(p => (
+                <span key={p.id} className="gantt-details-person">
+                  <Avatar name={p.name} src={p.avatar_url} color={p.color} size="sm" />
+                  <span>{p.name}</span>
+                </span>
+              )) : 'Unassigned'}
             </dd>
 
             {/* Only one of these is ever set per page — the project

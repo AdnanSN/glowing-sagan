@@ -21,6 +21,10 @@ import {
   slipGeom, toISO, useCompact, xToCol,
 } from '../lib/gantt'
 import { fetchNoteMarks } from '../lib/notes'
+import { AssigneePicker } from '../components/AssigneePicker'
+import {
+  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
+} from '../lib/assignees'
 
 /* ────────────────────────────────────────────────────────────────
    TEAM SCHEDULE
@@ -120,7 +124,7 @@ export function GanttTeam() {
       supabase.from('employees').select('*').order('name'),
       supabase.from('projects').select('id,name,color').order('name'),
       supabase.from('tasks')
-        .select('*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color)')
+        .select(`*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
         .order('due_date', { nullsFirst: false }),
     ])
     setEmployees(e.data || [])
@@ -149,11 +153,18 @@ export function GanttTeam() {
   }, [tasks, filterProject, filterStatus, search])
 
   const groups = useMemo(() => {
+    /* A shared task is listed under everybody on it, deliberately. The
+       question this view answers is "what is on Priya's plate this
+       fortnight", and a job she is half of is still on it. The row
+       carries the same task object either way, so editing from one
+       block updates both. */
     const byPerson = new Map()
     visibleTasks.forEach(t => {
-      const key = t.assignee_id || UNASSIGNED
-      if (!byPerson.has(key)) byPerson.set(key, [])
-      byPerson.get(key).push(t)
+      const keys = assigneeIdsOf(t)
+      ;(keys.length ? keys : [UNASSIGNED]).forEach(key => {
+        if (!byPerson.has(key)) byPerson.set(key, [])
+        byPerson.get(key).push(t)
+      })
     })
 
     const sortTasks = list => [...list].sort((a, b) => {
@@ -180,7 +191,10 @@ export function GanttTeam() {
     groups.forEach(group => {
       list.push({ type: 'member', id: `m-${group.key}`, group })
       if (collapsed.has(group.key)) return
-      group.tasks.forEach(task => list.push({ type: 'task', id: task.id, task, group }))
+      // Keyed by person as well as task: one shared line is two rows.
+      group.tasks.forEach(task => list.push({
+        type: 'task', id: `${group.key}:${task.id}`, task, group,
+      }))
     })
     return list
   }, [groups, collapsed])
@@ -219,11 +233,16 @@ export function GanttTeam() {
     if (!editRow) return
     setSaving(true)
     // Reassigning has to refetch: the row moves to another person's
-    // block, and the joined assignee here is stale the moment it changes.
-    const reassigned = editRow.assignee_id !== (editRow._originalAssignee || null)
+    // block — or into two of them — and nothing local can work that out
+    // from a patch.
+    const reassigned =
+      editRow.assignee_ids.join() !== (editRow._originalAssignees || []).join()
+    if (reassigned) {
+      const { error: err } = await setTaskAssignees(editRow.id, editRow.assignee_ids)
+      if (err) setError(err.message)
+    }
     await patchTask(editRow.id, {
       title: editRow.title,
-      assignee_id: editRow.assignee_id || null,
       start_date: editRow.start_date || null,
       due_date: editRow.due_date || null,
       status: editRow.status,
@@ -240,9 +259,9 @@ export function GanttTeam() {
       ...task,
       start_date: task.start_date || '',
       due_date: task.due_date || '',
-      assignee_id: task.assignee_id || '',
+      assignee_ids: assigneeIdsOf(task),
       progress: task.progress ?? 0,
-      _originalAssignee: task.assignee_id || null,
+      _originalAssignees: assigneeIdsOf(task),
     })
   }
 
@@ -624,12 +643,12 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
                 onChange={e => setEditRow(r => ({ ...r, title: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Assignee</label>
-              <select className="form-select" value={editRow.assignee_id}
-                onChange={e => setEditRow(r => ({ ...r, assignee_id: e.target.value }))}>
-                <option value="">— Unassigned —</option>
-                {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-              </select>
+              <label className="form-label">Assigned to</label>
+              <AssigneePicker
+                employees={employees}
+                value={editRow.assignee_ids}
+                onChange={ids => setEditRow(r => ({ ...r, assignee_ids: ids }))}
+              />
             </div>
             <div className="form-row">
               <div className="form-group">
@@ -779,6 +798,9 @@ function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
       title={[
         task.title,
         task.project ? `Project: ${task.project.name}` : null,
+        assigneesOf(task).length
+          ? `Assigned to ${assigneesOf(task).map(p => p.name).join(', ')}`
+          : 'Unassigned',
         `${format(geo.start, 'd MMM yyyy')} → ${format(geo.end, 'd MMM yyyy')}`,
         `${pct}% · ${task.status} · ${task.priority} priority`,
         geo.dateless ? 'Only one date set — drag to give it a span' : null,
@@ -800,10 +822,7 @@ function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
 
       {showLabel && <span className="gantt-bar-label">{task.title}</span>}
 
-      {task.assignee && geo.w > 110 && (
-        <span className="gantt-bar-avatar" style={{ background: task.assignee.color }}
-          title={task.assignee.name}>{task.assignee.name.charAt(0)}</span>
-      )}
+      {geo.w > 110 && <BarFaces people={assigneesOf(task)} />}
 
       {editable && !geo.clippedRight && (
         <span className="gantt-bar-handle right"
@@ -812,5 +831,23 @@ function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
         </span>
       )}
     </div>
+  )
+}
+
+/* The faces on a bar — two, then a count. Same reasoning as the
+   project timeline's: the title has to survive. */
+function BarFaces({ people }) {
+  if (!people.length) return null
+  const shown = people.slice(0, 2)
+  const extra = people.length - shown.length
+  return (
+    <span className="gantt-bar-faces" title={people.map(p => p.name).join(', ')}>
+      {shown.map(p => (
+        <span key={p.id} className="gantt-bar-avatar" style={{ background: p.color }}>
+          {p.name.charAt(0)}
+        </span>
+      ))}
+      {extra > 0 && <span className="gantt-bar-avatar more">+{extra}</span>}
+    </span>
   )
 }

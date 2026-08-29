@@ -55,17 +55,22 @@ export function Team() {
     setLoading(true)
     const [empRes, taskRes, projRes, teamRes] = await Promise.all([
       supabase.from('employees').select('*').order('name'),
-      supabase.from('tasks').select('assignee_id, status'),
+      // Everyone on a task, not just its lead — a roster count that
+      // only sees assignee_id under-reports whoever gets put on shared
+      // work.
+      supabase.from('tasks').select('id, status, task_assignees(employee_id)'),
       supabase.from('projects').select('id, name, color, status').order('name'),
       fetchTeams(),
     ])
     const emps = empRes.data || []
     const tasks = taskRes.data || []
+    const peopleOn = t => (t.task_assignees || []).map(a => a.employee_id)
     const counts = {}
     emps.forEach(e => {
+      const mine = tasks.filter(t => peopleOn(t).includes(e.id))
       counts[e.id] = {
-        total: tasks.filter(t => t.assignee_id === e.id).length,
-        open: tasks.filter(t => t.assignee_id === e.id && t.status !== 'Done').length,
+        total: mine.length,
+        open: mine.filter(t => t.status !== 'Done').length,
       }
     })
     setEmployees(emps)

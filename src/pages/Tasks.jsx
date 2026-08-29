@@ -5,10 +5,14 @@ import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import { Plus, Search, CheckSquare } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
-import { Avatar } from '../components/Avatar'
+import { AvatarStack } from '../components/Avatar'
+import { AssigneePicker } from '../components/AssigneePicker'
 import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
+import {
+  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, isAssignedTo, setTaskAssignees,
+} from '../lib/assignees'
 
 const STATUS_COLORS = {
   'To Do': { bg: '#F3F4F6', color: '#6B7280' },
@@ -42,7 +46,7 @@ function matchesDue(task, filter) {
 
 const EMPTY_FORM = {
   title: '', description: '', status: 'To Do', priority: 'Medium',
-  project_id: '', assignee_id: '', due_date: '', stage: ''
+  project_id: '', assignee_ids: [], due_date: '', stage: ''
 }
 
 export function Tasks() {
@@ -71,7 +75,9 @@ export function Tasks() {
   async function fetchAll() {
     setLoading(true)
     const [t, p, e] = await Promise.all([
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color)').order('created_at', { ascending: false }),
+      supabase.from('tasks')
+        .select(`*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
+        .order('created_at', { ascending: false }),
       supabase.from('projects').select('id,name,color').order('name'),
       supabase.from('employees').select('*').order('name'),
     ])
@@ -82,7 +88,7 @@ export function Tasks() {
   }
 
   function openNew() { setEditing(null); setForm(EMPTY_FORM); setShowModal(true) }
-  function openEdit(task) { setEditing(task); setForm({ ...task, project_id: task.project_id || '', assignee_id: task.assignee_id || '', due_date: task.due_date || '', stage: task.stage || '', description: task.description || '' }); setShowModal(true) }
+  function openEdit(task) { setEditing(task); setForm({ ...task, project_id: task.project_id || '', assignee_ids: assigneeIdsOf(task), due_date: task.due_date || '', stage: task.stage || '', description: task.description || '' }); setShowModal(true) }
   function closeModal() { setShowModal(false); setEditing(null) }
 
   async function handleSave() {
@@ -93,19 +99,28 @@ export function Tasks() {
       status: form.status,
       priority: form.priority,
       project_id: form.project_id || null,
-      assignee_id: form.assignee_id || null,
       due_date: form.due_date || null,
       stage: form.stage || null,
       updated_at: new Date().toISOString(),
     }
-    const { error } = editing
-      ? await supabase.from('tasks').update(payload).eq('id', editing.id)
-      : await supabase.from('tasks').insert(payload)
-    setSaving(false)
+    // assignee_id is not in there on purpose: it is the lead, derived
+    // by the database from the list written below.
+    const { data, error } = editing
+      ? await supabase.from('tasks').update(payload).eq('id', editing.id).select('id').single()
+      : await supabase.from('tasks').insert(payload).select('id').single()
+
     if (error) {
+      setSaving(false)
       alert(`Could not save task: ${error.message}`)
       return
     }
+
+    const { error: peopleError } = await setTaskAssignees(data.id, form.assignee_ids)
+    setSaving(false)
+    // The task itself is saved by this point — say what did not land
+    // rather than implying the whole save was lost.
+    if (peopleError) alert(`Task saved, but who is on it was not: ${peopleError.message}`)
+
     closeModal()
     fetchAll()
   }
@@ -124,7 +139,10 @@ export function Tasks() {
   const filtered = tasks.filter(t => {
     const matchSearch = t.title.toLowerCase().includes(search.toLowerCase())
     const matchProject = filterProject === 'All' || t.project_id === filterProject
-    const matchAssignee = filterAssignee === 'All' || t.assignee_id === filterAssignee
+    // Anybody on it, not just the lead — otherwise filtering to a
+    // person hides the shared work, which is the work they most need
+    // to see.
+    const matchAssignee = filterAssignee === 'All' || isAssignedTo(t, filterAssignee)
     return matchSearch && matchProject && matchAssignee && matchesDue(t, filterDue)
   })
 
@@ -254,10 +272,7 @@ export function Tasks() {
                               {format(new Date(task.due_date), 'd MMM')}
                             </span>
                           )}
-                          {task.assignee && (
-                            <Avatar name={task.assignee.name} src={task.assignee.avatar_url}
-                              color={task.assignee.color} size="sm" />
-                          )}
+                          <AvatarStack people={assigneesOf(task)} size="sm" max={3} />
                         </div>
                       </div>
                     </div>
@@ -309,11 +324,12 @@ export function Tasks() {
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Assignee</label>
-            <select className="form-select" value={form.assignee_id} onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}>
-              <option value="">— Unassigned —</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <label className="form-label">Assigned to</label>
+            <AssigneePicker
+              employees={employees}
+              value={form.assignee_ids}
+              onChange={ids => setForm(f => ({ ...f, assignee_ids: ids }))}
+            />
           </div>
         </div>
         <div className="form-row">

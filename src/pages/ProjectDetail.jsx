@@ -9,7 +9,8 @@ import {
   FolderOpen
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
-import { Avatar } from '../components/Avatar'
+import { AvatarStack } from '../components/Avatar'
+import { AssigneePicker } from '../components/AssigneePicker'
 import { format, isPast, isToday } from 'date-fns'
 import {
   STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
@@ -18,11 +19,14 @@ import {
 } from '../lib/constants'
 import { DocumentLocationModal } from '../components/DocumentLocationModal'
 import { StageEditor } from '../components/StageEditor'
+import {
+  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
+} from '../lib/assignees'
 import { SitePhotos } from '../components/SitePhotos'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 
-const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_id: '', due_date: '', start_date: '', stage: '', is_confidential: false }
+const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_ids: [], due_date: '', start_date: '', stage: '', is_confidential: false }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
 const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
 
@@ -83,7 +87,9 @@ export function ProjectDetail() {
       supabase.from('projects')
         .select('*, folder:project_folders(id,name,is_confidential)')
         .eq('id', id).single(),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').eq('project_id', id).order('created_at'),
+      supabase.from('tasks')
+        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
+        .eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('comments').select('*').eq('project_id', id).order('created_at'),
@@ -166,7 +172,7 @@ export function ProjectDetail() {
 
   // === TASKS ===
   function openNewTask() { setEditingTask(null); setTaskForm(EMPTY_TASK); setTaskModal(true) }
-  function openEditTask(t) { setEditingTask(t); setTaskForm({ ...t, assignee_id: t.assignee_id || '', start_date: t.start_date || '', due_date: t.due_date || '', stage: t.stage || '', description: t.description || '' }); setTaskModal(true) }
+  function openEditTask(t) { setEditingTask(t); setTaskForm({ ...t, assignee_ids: assigneeIdsOf(t), start_date: t.start_date || '', due_date: t.due_date || '', stage: t.stage || '', description: t.description || '' }); setTaskModal(true) }
   function closeTaskModal() { setTaskModal(false); setEditingTask(null) }
 
   async function saveTask() {
@@ -180,18 +186,18 @@ export function ProjectDetail() {
       description: taskForm.description || '',
       status: taskForm.status,
       priority: taskForm.priority,
-      assignee_id: taskForm.assignee_id || null,
       start_date: taskForm.start_date || null,
       due_date: taskForm.due_date || null,
       stage: taskForm.stage || null,
       is_confidential: !!taskForm.is_confidential,
       updated_at: new Date().toISOString(),
     }
-    if (editingTask) {
-      await supabase.from('tasks').update(payload).eq('id', editingTask.id)
-    } else {
-      await supabase.from('tasks').insert(payload)
-    }
+    // assignee_id is not in there on purpose: it is the lead, derived
+    // by the database from the list written straight after.
+    const { data, error } = editingTask
+      ? await supabase.from('tasks').update(payload).eq('id', editingTask.id).select('id').single()
+      : await supabase.from('tasks').insert(payload).select('id').single()
+    if (!error && data) await setTaskAssignees(data.id, taskForm.assignee_ids)
     setSaving(false)
     closeTaskModal()
     fetchAll()
@@ -514,10 +520,7 @@ export function ProjectDetail() {
                                   {format(new Date(task.due_date), 'd MMM')}
                                 </span>
                               )}
-                              {task.assignee && (
-                                <Avatar name={task.assignee.name} src={task.assignee.avatar_url}
-                                  color={task.assignee.color} size="sm" />
-                              )}
+                              <AvatarStack people={assigneesOf(task)} size="sm" max={3} />
                               {canManage && <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>}
                               {canManage && <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
                             </div>
@@ -702,11 +705,12 @@ export function ProjectDetail() {
         </div>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Assignee</label>
-            <select className="form-select" value={taskForm.assignee_id} onChange={e => setTaskForm(f => ({ ...f, assignee_id: e.target.value }))}>
-              <option value="">— Unassigned —</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <label className="form-label">Assigned to</label>
+            <AssigneePicker
+              employees={employees}
+              value={taskForm.assignee_ids}
+              onChange={ids => setTaskForm(f => ({ ...f, assignee_ids: ids }))}
+            />
           </div>
         </div>
         <div className="form-row">

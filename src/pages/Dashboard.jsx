@@ -11,6 +11,7 @@ import { Avatar } from '../components/Avatar'
 import { ConfidentialTag } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { projectStages, PROJECT_COLORS } from '../lib/constants'
+import { ASSIGNEES_SELECT, assigneesOf, isAssignedTo } from '../lib/assignees'
 
 /**
  * One figure in the top row. Every card stands for a slice of the data,
@@ -54,7 +55,9 @@ export function Dashboard() {
     setLoading(true)
     const [p, t, e, m] = await Promise.all([
       supabase.from('projects').select('*').order('created_at', { ascending: false }),
-      supabase.from('tasks').select('*, assignee:employees(id,name,color,avatar_url)').order('created_at', { ascending: false }),
+      supabase.from('tasks')
+        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
+        .order('created_at', { ascending: false }),
       supabase.from('employees').select('*').order('name'),
       supabase.from('milestones').select('*, project:projects(name)').order('due_date'),
     ])
@@ -164,8 +167,9 @@ export function Dashboard() {
                   const pStages = projectStages(project)
                   const stageIdx = pStages.indexOf(project.current_stage)
                   const stagePercent = Math.round(((stageIdx + 1) / pStages.length) * 100)
+                  // Everyone on the project's work, not just the leads.
                   const assignees = [...new Map(
-                    projectTasks.filter(t => t.assignee).map(t => [t.assignee.id, t.assignee])
+                    projectTasks.flatMap(t => assigneesOf(t)).map(a => [a.id, a])
                   ).values()].slice(0, 4)
 
                   return (
@@ -259,7 +263,7 @@ export function Dashboard() {
                   <div className="no-data">No team members yet</div>
                 ) : (
                   employees.slice(0, 6).map(emp => {
-                    const assigned = tasks.filter(t => t.assignee_id === emp.id && t.status !== 'Done').length
+                    const assigned = tasks.filter(t => t.status !== 'Done' && isAssignedTo(t, emp.id)).length
                     return (
                       <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0' }}>
                         <Avatar name={emp.name} src={emp.avatar_url} color={emp.color} />
