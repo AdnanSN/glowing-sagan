@@ -13,9 +13,24 @@ import { supabase } from './supabase'
 // writes it any more: write the list with setTaskAssignees() and the
 // column follows.
 
-/** Embed for a task query: the whole list, in the order it was picked. */
+/**
+ * Embeds for a task query. Both name the foreign key they travel, and
+ * the hints are not decoration.
+ *
+ * task_assignees is a junction table — two foreign keys and a composite
+ * primary key over them — which PostgREST reads as a many-to-many
+ * relationship between tasks and employees. From the moment it exists,
+ * a plain `employees(...)` embed on a task query has two ways to
+ * resolve: the assignee_id foreign key, or that many-to-many. PostgREST
+ * refuses ambiguity with a 300 rather than guessing, and it refuses the
+ * WHOLE query — which is why creating this table made every task in the
+ * app disappear at once. `!assignee_id` says which one.
+ */
+export const LEAD_SELECT =
+  'assignee:employees!assignee_id(id,name,color,avatar_url)'
+
 export const ASSIGNEES_SELECT =
-  'assignees:task_assignees(position, employee:employees(id,name,color,avatar_url))'
+  'assignees:task_assignees(position, employee:employees!employee_id(id,name,color,avatar_url))'
 
 /**
  * The people on a task, in order, from a row fetched with

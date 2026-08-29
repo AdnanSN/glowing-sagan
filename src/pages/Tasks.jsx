@@ -11,7 +11,7 @@ import { ConfidentialIcon } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 import {
-  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, isAssignedTo, setTaskAssignees,
+  ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, isAssignedTo, setTaskAssignees,
 } from '../lib/assignees'
 
 const STATUS_COLORS = {
@@ -76,11 +76,12 @@ export function Tasks() {
     setLoading(true)
     const [t, p, e] = await Promise.all([
       supabase.from('tasks')
-        .select(`*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
+        .select(`*, ${LEAD_SELECT}, project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
         .order('created_at', { ascending: false }),
       supabase.from('projects').select('id,name,color').order('name'),
       supabase.from('employees').select('*').order('name'),
     ])
+    if (t.error) console.error('Tasks: tasks query failed —', t.error)
     setTasks(t.data || [])
     setProjects(p.data || [])
     setEmployees(e.data || [])

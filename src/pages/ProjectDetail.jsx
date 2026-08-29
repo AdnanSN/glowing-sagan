@@ -20,7 +20,7 @@ import {
 import { DocumentLocationModal } from '../components/DocumentLocationModal'
 import { StageEditor } from '../components/StageEditor'
 import {
-  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
+  ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
 } from '../lib/assignees'
 import { SitePhotos } from '../components/SitePhotos'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
@@ -88,7 +88,7 @@ export function ProjectDetail() {
         .select('*, folder:project_folders(id,name,is_confidential)')
         .eq('id', id).single(),
       supabase.from('tasks')
-        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
+        .select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`)
         .eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
@@ -99,6 +99,7 @@ export function ProjectDetail() {
     ])
     if (!p.data) { navigate('/projects'); return }
     setProject(p.data)
+    if (t.error) console.error('ProjectDetail: tasks query failed —', t.error)
     setTasks(t.data || [])
     setMilestones(m.data || [])
     setDocuments(d.data || [])

@@ -19,7 +19,7 @@ import {
 import { fetchNoteMarks } from '../lib/notes'
 import { AssigneePicker } from '../components/AssigneePicker'
 import {
-  ASSIGNEES_SELECT, assigneeIdsOf, assigneesFromIds, assigneesOf, setTaskAssignees,
+  ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesFromIds, assigneesOf, setTaskAssignees,
 } from '../lib/assignees'
 
 /* ────────────────────────────────────────────────────────────────
@@ -144,10 +144,14 @@ export function GanttProject() {
     setLoadingRows(true)
     const [t, m] = await Promise.all([
       supabase.from('tasks')
-        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
+        .select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`)
         .eq('project_id', id).order('created_at'),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
     ])
+    // Say so rather than drawing an empty chart: a query that fails
+    // looks exactly like a project with no work in it, which is how a
+    // broken embed once read as "all the tasks are gone".
+    if (t.error) setError(`Could not load the line items: ${t.error.message}`)
     setTasks(t.data || [])
     setMilestones(m.data || [])
     setLoadingRows(false)
@@ -295,7 +299,7 @@ export function GanttProject() {
       progress: 0,
       start_date: toISO(start),
       due_date: toISO(addDays(start, 4)),
-    }).select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`).single()
+    }).select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`).single()
 
     if (err) { setError(err.message); return }
     setTasks(prev => [...prev, data])

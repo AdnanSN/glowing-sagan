@@ -23,7 +23,7 @@ import {
 import { fetchNoteMarks } from '../lib/notes'
 import { AssigneePicker } from '../components/AssigneePicker'
 import {
-  ASSIGNEES_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
+  ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
 } from '../lib/assignees'
 
 /* ────────────────────────────────────────────────────────────────
@@ -124,9 +124,11 @@ export function GanttTeam() {
       supabase.from('employees').select('*').order('name'),
       supabase.from('projects').select('id,name,color').order('name'),
       supabase.from('tasks')
-        .select(`*, assignee:employees(id,name,color,avatar_url), project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
+        .select(`*, ${LEAD_SELECT}, project:projects(id,name,color), ${ASSIGNEES_SELECT}`)
         .order('due_date', { nullsFirst: false }),
     ])
+    // An empty schedule and a failed query look identical on screen.
+    if (t.error) setError(`Could not load the schedule: ${t.error.message}`)
     setEmployees(e.data || [])
     setProjects(p.data || [])
     setTasks(t.data || [])

@@ -11,7 +11,7 @@ import { Avatar } from '../components/Avatar'
 import { ConfidentialTag } from '../components/ConfidentialTag'
 import { format, isPast, isToday } from 'date-fns'
 import { projectStages, PROJECT_COLORS } from '../lib/constants'
-import { ASSIGNEES_SELECT, assigneesOf, isAssignedTo } from '../lib/assignees'
+import { ASSIGNEES_SELECT, LEAD_SELECT, assigneesOf, isAssignedTo } from '../lib/assignees'
 
 /**
  * One figure in the top row. Every card stands for a slice of the data,
@@ -56,12 +56,15 @@ export function Dashboard() {
     const [p, t, e, m] = await Promise.all([
       supabase.from('projects').select('*').order('created_at', { ascending: false }),
       supabase.from('tasks')
-        .select(`*, assignee:employees(id,name,color,avatar_url), ${ASSIGNEES_SELECT}`)
+        .select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`)
         .order('created_at', { ascending: false }),
       supabase.from('employees').select('*').order('name'),
       supabase.from('milestones').select('*, project:projects(name)').order('due_date'),
     ])
     setProjects(p.data || [])
+    // A failed tasks query renders as a dashboard full of zeros, which
+    // reads as "the work vanished" rather than "the query broke".
+    if (t.error) console.error('Dashboard: tasks query failed —', t.error)
     setTasks(t.data || [])
     setEmployees(e.data || [])
     setMilestones(m.data || [])
