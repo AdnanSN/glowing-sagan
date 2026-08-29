@@ -8,7 +8,7 @@ import { RefreshButton } from '../components/RefreshButton'
 import { AvatarStack } from '../components/Avatar'
 import { AssigneePicker } from '../components/AssigneePicker'
 import { ConfidentialIcon } from '../components/ConfidentialTag'
-import { format, isPast, isToday } from 'date-fns'
+import { format, isPast, isToday, isTomorrow } from 'date-fns'
 import { TASK_STATUSES, PRIORITIES } from '../lib/constants'
 import {
   ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, isAssignedTo, setTaskAssignees,
@@ -29,10 +29,20 @@ const PRIORITY_COLORS = {
 
 // Slices of the board by when work is due. The dashboard's stat cards
 // link straight to these, so the counts there and the board agree.
+// `count` names the slice in the header; `empty` explains an empty board.
 const DUE_FILTERS = [
-  { value: 'All', label: 'Any due date' },
-  { value: 'today', label: 'Due today' },
-  { value: 'overdue', label: 'Overdue' },
+  {
+    value: 'today', label: 'Due today', count: 'due today',
+    empty: { title: 'Nothing due today', desc: 'No open task is due today.' },
+  },
+  {
+    value: 'tomorrow', label: 'Due tomorrow', count: 'due tomorrow',
+    empty: { title: 'Nothing due tomorrow', desc: 'No open task is due tomorrow.' },
+  },
+  {
+    value: 'overdue', label: 'Overdue', count: 'overdue',
+    empty: { title: 'Nothing overdue', desc: 'Every open task is still within its due date.' },
+  },
 ]
 
 function matchesDue(task, filter) {
@@ -41,6 +51,7 @@ function matchesDue(task, filter) {
   if (!task.due_date || task.status === 'Done') return false
   const due = new Date(task.due_date)
   if (filter === 'today') return isToday(due)
+  if (filter === 'tomorrow') return isTomorrow(due)
   return isPast(due) && !isToday(due)
 }
 
@@ -63,8 +74,12 @@ export function Tasks() {
   // slice of the board, Back steps out of it, and a refresh keeps it.
   const [params, setParams] = useSearchParams()
   const rawDue = params.get('due')
-  const filterDue = DUE_FILTERS.some(d => d.value === rawDue) ? rawDue : 'All'
+  const activeDue = DUE_FILTERS.find(d => d.value === rawDue) || null
+  const filterDue = activeDue ? activeDue.value : 'All'
+  // Pressing the button that is already on clears it, so the group
+  // needs no separate "any due date" control.
   const setFilterDue = (value) => setParams(value === 'All' ? {} : { due: value })
+  const toggleDue = (value) => setFilterDue(filterDue === value ? 'All' : value)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -172,9 +187,9 @@ export function Tasks() {
         <div className="page-header-left">
           <span className="page-header-title">Tasks</span>
           <span className="page-header-sub">
-            {filterDue === 'All'
-              ? `${tasks.filter(t => t.status !== 'Done').length} open tasks`
-              : `${filtered.length} ${filterDue === 'overdue' ? 'overdue' : 'due today'}`}
+            {activeDue
+              ? `${filtered.length} ${activeDue.count}`
+              : `${tasks.filter(t => t.status !== 'Done').length} open tasks`}
           </span>
         </div>
         <div className="page-header-actions">
@@ -202,10 +217,16 @@ export function Tasks() {
             <option value="All">All Assignees</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <select className="form-select form-select-sm" value={filterDue}
-            onChange={e => setFilterDue(e.target.value)}>
-            {DUE_FILTERS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-          </select>
+          <div className="due-filter-group">
+            {DUE_FILTERS.map(d => (
+              <button key={d.value} type="button"
+                className={`due-filter-btn${filterDue === d.value ? ' active' : ''}`}
+                aria-pressed={filterDue === d.value}
+                onClick={() => toggleDue(d.value)}>
+                {d.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -219,20 +240,14 @@ export function Tasks() {
               {canManage && <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> Add Task</button>}
             </div>
           </div>
-        ) : filterDue !== 'All' && filtered.length === 0 && !search && filterProject === 'All' && filterAssignee === 'All' ? (
+        ) : activeDue && filtered.length === 0 && !search && filterProject === 'All' && filterAssignee === 'All' ? (
           /* Arriving from the dashboard with nothing to see should say so,
              not leave four empty columns to read as a loading failure. */
           <div className="card">
             <div className="empty-state">
               <div className="empty-state-icon"><CheckSquare /></div>
-              <div className="empty-state-title">
-                {filterDue === 'overdue' ? 'Nothing overdue' : 'Nothing due today'}
-              </div>
-              <div className="empty-state-desc">
-                {filterDue === 'overdue'
-                  ? 'Every open task is still within its due date.'
-                  : 'No open task is due today.'}
-              </div>
+              <div className="empty-state-title">{activeDue.empty.title}</div>
+              <div className="empty-state-desc">{activeDue.empty.desc}</div>
               <button className="btn btn-secondary" onClick={() => setFilterDue('All')}>Show all tasks</button>
             </div>
           </div>
