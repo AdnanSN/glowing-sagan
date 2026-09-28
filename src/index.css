@@ -1718,7 +1718,11 @@ h1, h2, h3, h4, h5, h6 {
    =========================== */
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0, 1fr), not 1fr: a bare 1fr floors at the column's
+     min-content, so a day carrying a long event title steals width from
+     the empty days beside it and the week stops being seven equal
+     columns. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background: var(--border-light);
   border: 1px solid var(--border-light);
