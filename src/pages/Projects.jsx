@@ -5,7 +5,7 @@ import { useAuth } from '../lib/AuthContext'
 import { Modal } from '../components/Modal'
 import {
   Plus, Search, Pencil, Trash2, FolderKanban, Folder, FolderOpen,
-  ArrowLeft, FolderPlus,
+  ArrowLeft, FolderPlus, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
 import { format } from 'date-fns'
@@ -45,6 +45,9 @@ export function Projects() {
   const [saving, setSaving] = useState(false)
   const [folderModal, setFolderModal] = useState(null) // { id?, name }
   const [folderError, setFolderError] = useState('')
+  // Folder being dragged, and the card it is currently hovering over.
+  const [dragId, setDragId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
   const [saveError, setSaveError] = useState('')
   // Stages for whichever project the modal is showing — the defaults when
   // creating, the project's own list when editing.
@@ -219,6 +222,33 @@ export function Projects() {
     }
     setFolderModal(null)
     fetchAll()
+  }
+
+  // Reorder by moving one folder to another's slot, then renumber the
+  // whole list 1..n. Optimistic: the grid moves at once, and only rows
+  // whose position actually changed are written back.
+  async function moveFolder(fromId, toIndex) {
+    const from = folders.findIndex(f => f.id === fromId)
+    if (from < 0 || toIndex < 0 || toIndex >= folders.length || from === toIndex) return
+    const next = [...folders]
+    const [moved] = next.splice(from, 1)
+    next.splice(toIndex, 0, moved)
+    const renumbered = next.map((f, i) => ({ ...f, position: i + 1 }))
+    const changed = renumbered.filter(f => folders.find(o => o.id === f.id)?.position !== f.position)
+    setFolders(renumbered)
+
+    const results = await Promise.all(changed.map(f =>
+      supabase.from('project_folders').update({ position: f.position }).eq('id', f.id)))
+    const failed = results.find(r => r.error)
+    if (failed) {
+      alert(`Could not save the new folder order: ${failed.error.message}`)
+      fetchAll()
+    }
+  }
+
+  function nudgeFolder(e, folder, delta) {
+    e.stopPropagation()
+    moveFolder(folder.id, folders.findIndex(f => f.id === folder.id) + delta)
   }
 
   async function deleteFolder(e, folder) {
@@ -410,15 +440,42 @@ export function Projects() {
             </div>
           ) : (
             <div className="folder-grid">
-              {folders.map(f => {
+              {folders.map((f, i) => {
                 const inside = projects.filter(p => p.folder_id === f.id)
                 const open = inside.filter(p => p.status !== 'Completed' && p.status !== 'Cancelled').length
+                const cls = ['folder-card',
+                  dragId === f.id && 'folder-card-dragging',
+                  dragOverId === f.id && dragId !== f.id && 'folder-card-drop'].filter(Boolean).join(' ')
                 return (
-                  <div key={f.id} className="folder-card" onClick={() => openFolder(f.id)}>
+                  <div key={f.id} className={cls} onClick={() => openFolder(f.id)}
+                    draggable={canManage}
+                    onDragStart={e => {
+                      setDragId(f.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', f.id)
+                    }}
+                    onDragOver={e => {
+                      if (!dragId) return
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (dragOverId !== f.id) setDragOverId(f.id)
+                    }}
+                    onDrop={e => {
+                      e.preventDefault()
+                      if (dragId) moveFolder(dragId, i)
+                      setDragId(null); setDragOverId(null)
+                    }}
+                    onDragEnd={() => { setDragId(null); setDragOverId(null) }}>
                     <div className="folder-card-top">
                       <Folder className="folder-card-icon" size={22} />
                       {canManage && (
                         <div className="folder-card-actions">
+                          <button className="icon-btn" title="Move left"
+                            disabled={i === 0}
+                            onClick={e => nudgeFolder(e, f, -1)}><ChevronLeft size={12} /></button>
+                          <button className="icon-btn" title="Move right"
+                            disabled={i === folders.length - 1}
+                            onClick={e => nudgeFolder(e, f, 1)}><ChevronRight size={12} /></button>
                           <button className="icon-btn" title="Rename folder"
                             onClick={e => renameFolder(e, f)}><Pencil size={12} /></button>
                           <button className="icon-btn" title="Delete folder"
