@@ -35,16 +35,27 @@ create table if not exists employees (
 create table if not exists project_folders (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  position int not null default 0,          -- display order; ties break on name
-  -- Principal Architects only: hides the folder AND everything filed
-  -- in it from everyone else. Enforced in RLS, see migration_v8.
+  -- Folders nest like the NAS: null is the top level. SET NULL is a
+  -- backstop only — deleting a folder first moves its contents up
+  -- into this parent (see project_folders_reparent_on_delete).
+  parent_id uuid references project_folders(id) on delete set null,
+  position int not null default 0,          -- order among siblings; ties break on name
+  -- Principal Architects only: hides the folder AND everything below
+  -- it, however deep, from everyone else. Enforced in RLS, see
+  -- migration_v8 and migration_v16.
   is_confidential boolean not null default false,
   created_at timestamptz not null default now()
 );
 
--- Two folders with the same name would be a filing system that lies.
-create unique index if not exists project_folders_name_unique
-  on project_folders (lower(name));
+create index if not exists project_folders_parent_idx on project_folders (parent_id);
+
+-- Two sibling folders with the same name would be a filing system that
+-- lies. Siblings only — every folder may have its own "Drawings".
+create unique index if not exists project_folders_sibling_name_unique
+  on project_folders (
+    coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    lower(name)
+  );
 
 -- PROJECTS
 create table if not exists projects (
@@ -55,8 +66,8 @@ create table if not exists projects (
   -- a project number is a filing convention, not a key.
   project_number text,
   revision text,
-  -- SET NULL: deleting a folder files its contents under "Unfiled",
-  -- it never deletes projects.
+  -- Deleting a folder moves its projects up into its parent (or to
+  -- "Unfiled" at the top); it never deletes projects.
   folder_id uuid references project_folders(id) on delete set null,
   project_type text not null default 'Residential',
   status text not null default 'Active', -- Active, Planning, Paused, Completed, Cancelled
@@ -331,12 +342,19 @@ $$;
 -- Confidential work is Principal Architects (admins) only. These two
 -- answer "is this row restricted" for the policies below; definer so
 -- they can read the parent row without re-entering those policies.
+-- A folder is restricted if it, or any folder above it, is flagged.
 create or replace function public.folder_is_confidential(p_folder uuid)
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce(
-    (select f.is_confidential from public.project_folders f where f.id = p_folder),
-    false
-  );
+  with recursive chain as (
+    select f.id, f.parent_id, f.is_confidential, 1 as depth
+      from public.project_folders f where f.id = p_folder
+    union all
+    select f.id, f.parent_id, f.is_confidential, c.depth + 1
+      from public.project_folders f
+      join chain c on f.id = c.parent_id
+     where c.depth < 64
+  )
+  select coalesce(bool_or(is_confidential), false) from chain;
 $$;
 
 -- Governs everything that belongs to a project. A row with no
@@ -443,6 +461,56 @@ drop trigger if exists task_assignees_sync_lead on public.task_assignees;
 create trigger task_assignees_sync_lead
   after insert or update or delete on public.task_assignees
   for each row execute function public.sync_task_lead_assignee();
+
+-- Folder tree upkeep (migration_v16). Definer so both see restricted
+-- folders a manager cannot — a hidden subfolder must not be orphaned
+-- or looped around.
+-- No folder inside itself, directly or through its own subfolders.
+create or replace function public.project_folders_guard_parent()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.parent_id is null then
+    return new;
+  end if;
+  if new.parent_id = new.id then
+    raise exception 'A folder cannot be inside itself';
+  end if;
+  if exists (
+    with recursive up as (
+      select f.id, f.parent_id from public.project_folders f where f.id = new.parent_id
+      union
+      select f.id, f.parent_id from public.project_folders f join up on f.id = up.parent_id
+    )
+    select 1 from up where up.id = new.id
+  ) then
+    raise exception 'A folder cannot be moved inside one of its own subfolders';
+  end if;
+  return new;
+end$$;
+
+revoke all on function public.project_folders_guard_parent() from public, anon;
+
+drop trigger if exists project_folders_guard_parent on public.project_folders;
+create trigger project_folders_guard_parent
+  before insert or update of parent_id on public.project_folders
+  for each row execute function public.project_folders_guard_parent();
+
+-- Deleting a folder empties it into its parent first, so nothing is
+-- ever lost — subfolders and projects just move up a level.
+create or replace function public.project_folders_reparent_on_delete()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update public.project_folders set parent_id = old.parent_id where parent_id = old.id;
+  update public.projects        set folder_id = old.parent_id where folder_id = old.id;
+  return old;
+end$$;
+
+revoke all on function public.project_folders_reparent_on_delete() from public, anon;
+
+drop trigger if exists project_folders_reparent_on_delete on public.project_folders;
+create trigger project_folders_reparent_on_delete
+  before delete on public.project_folders
+  for each row execute function public.project_folders_reparent_on_delete();
 
 -- Storage object names carry ids in their first path segment; a
 -- malformed path must fail the policy rather than raise a cast error.
@@ -710,11 +778,15 @@ create policy "admin write team members" on team_members for all to authenticate
 -- receives the row, and cannot flag, unflag or edit one either.
 
 -- PROJECT FOLDERS — manager and above reorganise
+-- Tested against the whole chain above the folder, not just the row.
+-- WITH CHECK looks at the new parent, so a manager cannot move a folder
+-- into restricted territory either.
 create policy "read project folders" on project_folders for select to authenticated
-  using (public.is_approved() and (public.is_admin() or not is_confidential));
+  using (public.is_approved() and (public.is_admin() or not public.folder_is_confidential(id)));
 create policy "manager write project folders" on project_folders for all to authenticated
-  using      (public.has_min_role('manager') and (public.is_admin() or not is_confidential))
-  with check (public.has_min_role('manager') and (public.is_admin() or not is_confidential));
+  using      (public.has_min_role('manager') and (public.is_admin() or not public.folder_is_confidential(id)))
+  with check (public.has_min_role('manager') and (public.is_admin()
+               or (not is_confidential and not public.folder_is_confidential(parent_id))));
 
 -- PROJECTS — manager and above; restricted in their own right or by folder
 create policy "read projects" on projects for select to authenticated

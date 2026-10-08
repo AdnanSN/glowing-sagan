@@ -1195,6 +1195,37 @@ h1, h2, h3, h4, h5, h6 {
   cursor: default;
 }
 
+/* Inside a folder: its subfolders, then its own projects underneath. */
+.folder-grid + .card { margin-top: var(--space-5); }
+
+/* "Projects › 00-ADMIN" under a folder's title — each step clickable. */
+.folder-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.folder-breadcrumb nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.folder-breadcrumb button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.folder-breadcrumb button:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
 .folder-search-note {
   font-size: var(--text-xs);
   color: var(--text-secondary);

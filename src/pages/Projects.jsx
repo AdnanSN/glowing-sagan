@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -17,6 +17,10 @@ import { StageEditor } from '../components/StageEditor'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 import { deleteProjectPhotos } from '../lib/photos'
+import {
+  childFolders, folderPath, folderPathLabel, folderRestricted, descendantIds,
+  folderTreeOptions, indentedName,
+} from '../lib/folders'
 
 const EMPTY_FORM = {
   name: '', client: '', project_type: DEFAULT_PROJECT_TYPE, status: 'Active',
@@ -190,15 +194,23 @@ export function Projects() {
   }
 
   // ── Folders ─────────────────────────────────────────────────
+  // A new folder lands wherever you are standing, like on the NAS.
   function newFolder() {
     setFolderError('')
-    setFolderModal({ name: '', is_confidential: false })
+    setFolderModal({ name: '', parent_id: realFolderId || '', is_confidential: false })
   }
-  function renameFolder(e, folder) {
+  function editFolder(e, folder) {
     e.stopPropagation()
     setFolderError('')
-    setFolderModal({ id: folder.id, name: folder.name, is_confidential: !!folder.is_confidential })
+    setFolderModal({
+      id: folder.id, name: folder.name, parent_id: folder.parent_id || '',
+      is_confidential: !!folder.is_confidential,
+    })
   }
+
+  // Next free slot at the end of a parent's row of folders.
+  const nextPosition = (parentId) =>
+    Math.max(0, ...childFolders(folders, parentId).map(f => f.position ?? 0)) + 1
 
   async function saveFolder() {
     const name = folderModal.name.trim()
@@ -206,17 +218,23 @@ export function Projects() {
     setSaving(true)
     setFolderError('')
 
-    const fields = { name, is_confidential: !!folderModal.is_confidential }
+    const parent_id = folderModal.parent_id || null
+    const fields = { name, parent_id, is_confidential: !!folderModal.is_confidential }
+    const original = folderModal.id && folderById(folderModal.id)
+    // Moving into another folder goes to the end of its new row.
+    if (!original || (original.parent_id || null) !== parent_id) {
+      fields.position = nextPosition(parent_id)
+    }
     const { error } = folderModal.id
       ? await supabase.from('project_folders').update(fields).eq('id', folderModal.id)
-      : await supabase.from('project_folders')
-          .insert({ ...fields, position: folders.length + 1 })
+      : await supabase.from('project_folders').insert(fields)
 
     setSaving(false)
     if (error) {
-      // The unique index on lower(name) is what actually stops duplicates.
+      // The unique index on (parent, lower(name)) is what actually stops
+      // duplicates; the loop guard trigger words its own refusal.
       setFolderError(error.code === '23505'
-        ? 'A folder with that name already exists.'
+        ? 'A folder with that name already exists in that location.'
         : error.message)
       return
     }
@@ -224,18 +242,23 @@ export function Projects() {
     fetchAll()
   }
 
-  // Reorder by moving one folder to another's slot, then renumber the
-  // whole list 1..n. Optimistic: the grid moves at once, and only rows
-  // whose position actually changed are written back.
+  // Reorder within one row of sibling folders: move one into another's
+  // slot, then renumber that row 1..n. Optimistic — the grid moves at
+  // once, and only rows whose position actually changed are written.
   async function moveFolder(fromId, toIndex) {
-    const from = folders.findIndex(f => f.id === fromId)
-    if (from < 0 || toIndex < 0 || toIndex >= folders.length || from === toIndex) return
-    const next = [...folders]
-    const [moved] = next.splice(from, 1)
-    next.splice(toIndex, 0, moved)
-    const renumbered = next.map((f, i) => ({ ...f, position: i + 1 }))
-    const changed = renumbered.filter(f => folders.find(o => o.id === f.id)?.position !== f.position)
-    setFolders(renumbered)
+    const moving = folderById(fromId)
+    if (!moving) return
+    const siblings = childFolders(folders, moving.parent_id)
+    const from = siblings.findIndex(f => f.id === fromId)
+    if (toIndex < 0 || toIndex >= siblings.length || from === toIndex) return
+    const next = [...siblings]
+    next.splice(from, 1)
+    next.splice(toIndex, 0, moving)
+    const changed = next
+      .map((f, i) => ({ ...f, position: i + 1 }))
+      .filter(f => folderById(f.id).position !== f.position)
+    const newPos = Object.fromEntries(changed.map(f => [f.id, f.position]))
+    setFolders(fs => fs.map(f => f.id in newPos ? { ...f, position: newPos[f.id] } : f))
 
     const results = await Promise.all(changed.map(f =>
       supabase.from('project_folders').update({ position: f.position }).eq('id', f.id)))
@@ -248,18 +271,34 @@ export function Projects() {
 
   function nudgeFolder(e, folder, delta) {
     e.stopPropagation()
-    moveFolder(folder.id, folders.findIndex(f => f.id === folder.id) + delta)
+    const siblings = childFolders(folders, folder.parent_id)
+    moveFolder(folder.id, siblings.findIndex(f => f.id === folder.id) + delta)
   }
 
   async function deleteFolder(e, folder) {
     e.stopPropagation()
+    // Nothing inside is deleted — the database moves it all up a level.
+    const subs = childFolders(folders, folder.id).length
     const count = projects.filter(p => p.folder_id === folder.id).length
-    const warning = count
-      ? `Delete "${folder.name}"? Its ${count} project${count !== 1 ? 's' : ''} will move to Unfiled — nothing is deleted.`
+    const parent = folderById(folder.parent_id)
+    const contents = [
+      subs && `${subs} subfolder${subs !== 1 ? 's' : ''}`,
+      count && `${count} project${count !== 1 ? 's' : ''}`,
+    ].filter(Boolean).join(' and ')
+    const where = parent ? `"${parent.name}"` : count ? 'the top level (projects to Unfiled)' : 'the top level'
+    const warning = contents
+      ? `Delete "${folder.name}"? Its ${contents} will move up into ${where} — nothing is deleted.`
       : `Delete "${folder.name}"?`
     if (!confirm(warning)) return
-    await supabase.from('project_folders').delete().eq('id', folder.id)
-    if (openFolderId === folder.id) closeFolder()
+    const { error } = await supabase.from('project_folders').delete().eq('id', folder.id)
+    if (error) {
+      alert(error.code === '23505'
+        ? `Could not delete "${folder.name}": a subfolder has the same name as a folder in ${where}. Rename one of them first.`
+        : `Could not delete "${folder.name}": ${error.message}`)
+      return
+    }
+    // Standing inside the folder (or below it)? Step out to its parent.
+    if (realFolderId && descendantIds(folders, folder.id).has(realFolderId)) openFolder(folder.parent_id)
     fetchAll()
   }
 
@@ -278,16 +317,25 @@ export function Projects() {
   const activeFolder = openFolderId === UNFILED
     ? { id: UNFILED, name: 'Unfiled' }
     : folders.find(f => f.id === openFolderId) || null
+  // The open folder as a real row — null at the top level and in Unfiled.
+  const realFolderId = activeFolder && activeFolder.id !== UNFILED ? activeFolder.id : null
+  // Where you are, top first: Projects › 00-ADMIN › HR.
+  const trail = realFolderId ? folderPath(folders, realFolderId) : []
+  const parentOfActive = trail.length > 1 ? trail[trail.length - 2] : null
 
-  // A search should look through the whole cabinet, not just the drawer
-  // you happen to have open — so filtering flattens back to a flat list.
-  const showingList = !!activeFolder || searching
+  // The folders shown as cards: the top row, or the open folder's own
+  // subfolders. Unfiled is a pseudo-folder and never has any.
+  const visibleFolders = activeFolder?.id === UNFILED ? [] : childFolders(folders, realFolderId)
+
+  // Searching looks through everything below where you are standing,
+  // subfolders included — the whole cabinet from the top level.
+  const scope = realFolderId ? descendantIds(folders, realFolderId) : null
 
   const listed = projects.filter(p => {
     if (!matchesFilters(p)) return false
-    if (searching && !activeFolder) return true
-    if (!activeFolder) return false
-    return activeFolder.id === UNFILED ? !p.folder_id : p.folder_id === activeFolder.id
+    if (activeFolder?.id === UNFILED) return !p.folder_id
+    if (searching) return !scope || scope.has(p.folder_id)
+    return !!realFolderId && p.folder_id === realFolderId
   })
 
   // Keep the Current Stage picker pointing at a stage that still exists.
@@ -320,16 +368,22 @@ export function Projects() {
   }
 
   const folderById = (id) => folders.find(f => f.id === id)
-  const folderName = (id) => folderById(id)?.name
 
   // Why a project is Principal-Architects-only: its own flag, or the
-  // folder it is filed in. null when it is open to the practice.
+  // folder it is filed in (or any folder above that). null when it is
+  // open to the practice.
   const restrictedBy = (p) =>
-    p.is_confidential ? 'own' : folderById(p.folder_id)?.is_confidential ? 'folder' : null
+    p.is_confidential ? 'own' : folderRestricted(folders, p.folder_id) ? 'folder' : null
 
   // The folder currently picked in the modal already restricts whatever
   // goes into it, so there is nothing left for the toggle to decide.
-  const inheritsRestriction = !!folderById(form.folder_id)?.is_confidential
+  const inheritsRestriction = folderRestricted(folders, form.folder_id)
+  const folderInheritsRestriction = folderRestricted(folders, folderModal?.parent_id)
+
+  // Every folder, nested, for the two "where does this go" pickers. A
+  // folder cannot be moved into itself or anything below it.
+  const folderOptions = folderTreeOptions(folders)
+  const parentOptions = folderTreeOptions(folders, folderModal?.id)
 
   // Standard types plus every custom one already in use, so a type
   // somebody typed on one project is a click away on the next.
@@ -354,18 +408,228 @@ export function Projects() {
       <button className="btn btn-secondary" onClick={() => setFolderModal(null)}>Cancel</button>
       <button className="btn btn-primary" onClick={saveFolder}
         disabled={!folderModal?.name.trim() || saving}>
-        {saving ? 'Saving…' : folderModal?.id ? 'Save Name' : 'Create Folder'}
+        {saving ? 'Saving…' : folderModal?.id ? 'Save Folder' : 'Create Folder'}
       </button>
     </>
   )
+
+  const plural = (n, word) => `${n} ${word}${n !== 1 ? 's' : ''}`
+
+  // One folder card. Project counts take in everything below it, so a
+  // folder whose projects all sit in subfolders still reads as full.
+  function renderFolderCard(f, i, siblings) {
+    const below = descendantIds(folders, f.id)
+    const inside = projects.filter(p => below.has(p.folder_id))
+    const open = inside.filter(p => p.status !== 'Completed' && p.status !== 'Cancelled').length
+    const subs = childFolders(folders, f.id).length
+    const meta = [
+      subs && plural(subs, 'folder'),
+      inside.length && plural(inside.length, 'project'),
+      open && `${open} open`,
+    ].filter(Boolean).join(' · ') || 'Empty'
+    const cls = ['folder-card',
+      dragId === f.id && 'folder-card-dragging',
+      dragOverId === f.id && dragId !== f.id && 'folder-card-drop'].filter(Boolean).join(' ')
+    return (
+      <div key={f.id} className={cls} onClick={() => openFolder(f.id)}
+        draggable={canManage}
+        onDragStart={e => {
+          setDragId(f.id)
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', f.id)
+        }}
+        onDragOver={e => {
+          if (!dragId) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (dragOverId !== f.id) setDragOverId(f.id)
+        }}
+        onDrop={e => {
+          e.preventDefault()
+          if (dragId) moveFolder(dragId, i)
+          setDragId(null); setDragOverId(null)
+        }}
+        onDragEnd={() => { setDragId(null); setDragOverId(null) }}>
+        <div className="folder-card-top">
+          <Folder className="folder-card-icon" size={22} />
+          {canManage && (
+            <div className="folder-card-actions">
+              <button className="icon-btn" title="Move left"
+                disabled={i === 0}
+                onClick={e => nudgeFolder(e, f, -1)}><ChevronLeft size={12} /></button>
+              <button className="icon-btn" title="Move right"
+                disabled={i === siblings.length - 1}
+                onClick={e => nudgeFolder(e, f, 1)}><ChevronRight size={12} /></button>
+              <button className="icon-btn" title="Rename or move folder"
+                onClick={e => editFolder(e, f)}><Pencil size={12} /></button>
+              <button className="icon-btn" title="Delete folder"
+                onClick={e => deleteFolder(e, f)}
+                style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="folder-card-name">{f.name}</div>
+        <div className="folder-card-meta">{meta}</div>
+        {f.is_confidential && (
+          <div style={{ marginTop: 'var(--space-2)' }}><ConfidentialTag /></div>
+        )}
+        <div className="folder-card-strip">
+          {inside.slice(0, 12).map(p => (
+            <span key={p.id} className="folder-card-dot"
+              style={{ background: p.color }} title={p.name} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const folderGrid = (
+    <div className="folder-grid">
+      {visibleFolders.map((f, i) => renderFolderCard(f, i, visibleFolders))}
+
+      {/* Top level only, and only worth showing when something actually
+          landed there. */}
+      {!activeFolder && unfiledCount > 0 && (
+        <div className="folder-card folder-card-unfiled" onClick={() => openFolder(UNFILED)}>
+          <div className="folder-card-top">
+            <FolderOpen className="folder-card-icon" size={22} />
+          </div>
+          <div className="folder-card-name">Unfiled</div>
+          <div className="folder-card-meta">
+            {plural(unfiledCount, 'project')} with no folder
+          </div>
+          <div className="folder-card-strip">
+            {projects.filter(p => !p.folder_id).slice(0, 12).map(p => (
+              <span key={p.id} className="folder-card-dot"
+                style={{ background: p.color }} title={p.name} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  // Which folder a hit came from only matters when the list can span
+  // more than one of them.
+  const showFolderColumn = searching && activeFolder?.id !== UNFILED
+
+  const projectTable = (
+    <div className="card">
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Client</th>
+              {showFolderColumn && <th>Folder</th>}
+              <th>Type</th>
+              <th>Stage</th>
+              <th>Status</th>
+              <th>Deadline</th>
+              {canManage && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {listed.map(p => (
+              <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p.id}`)}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                        {p.name}
+                        {restrictedBy(p) && <ConfidentialIcon reason={restrictedBy(p)} />}
+                      </div>
+                      {p.location && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{p.location}</div>}
+                    </div>
+                  </div>
+                </td>
+                <td style={{ fontSize: 'var(--text-sm)' }}>{p.client}</td>
+                {showFolderColumn && (
+                  <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                    {folderPathLabel(folders, p.folder_id) || 'Unfiled'}
+                  </td>
+                )}
+                <td><span className="tag">{p.project_type}</span></td>
+                <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{p.current_stage}</td>
+                <td><span className={`badge ${getStatusColor(p.status)}`}>{p.status}</span></td>
+                <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                  {p.end_date ? format(new Date(p.end_date), 'd MMM yyyy') : '—'}
+                </td>
+                {canManage && (
+                  <td>
+                    <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                      <button className="icon-btn" onClick={e => openEdit(e, p)} title="Edit"><Pencil size={13} /></button>
+                      <button className="icon-btn" onClick={e => handleDelete(e, p.id)} title="Delete"
+                        style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  const emptyState = (title, desc, actions) => (
+    <div className="card">
+      <div className="empty-state">
+        <div className="empty-state-icon"><FolderKanban /></div>
+        <div className="empty-state-title">{title}</div>
+        <div className="empty-state-desc">{desc}</div>
+        {actions}
+      </div>
+    </div>
+  )
+
+  // What sits directly in the open folder, for the header line.
+  const directProjects = activeFolder?.id === UNFILED
+    ? unfiledCount
+    : projects.filter(p => p.folder_id === realFolderId).length
+
+  let body
+  if (loading) {
+    body = <div className="loading-container"><div className="loading-spinner" /><span>Loading…</span></div>
+  } else if (searching || activeFolder?.id === UNFILED) {
+    // ── Flat list: search results, or the Unfiled pile ──
+    body = listed.length > 0 ? projectTable : searching
+      ? emptyState('No results found', 'Try a different search or status filter')
+      : emptyState('This folder is empty', 'Every project has been filed in a folder')
+  } else if (!activeFolder) {
+    // ── Top level: the folder cards ──
+    body = folders.length === 0 && unfiledCount === 0
+      ? emptyState('No projects yet', 'Create your first project to get started tracking your work',
+          canManage && <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>)
+      : folderGrid
+  } else {
+    // ── Inside a folder: its subfolders first, then its own projects ──
+    body = visibleFolders.length === 0 && listed.length === 0
+      ? emptyState('This folder is empty',
+          'Add a subfolder or a project here, or move one in from its Edit screen',
+          canManage && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
+              <button className="btn btn-secondary" onClick={newFolder}><FolderPlus size={15} /> New Folder</button>
+              <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
+            </div>
+          ))
+      : <>
+          {visibleFolders.length > 0 && folderGrid}
+          {listed.length > 0 && projectTable}
+        </>
+  }
 
   return (
     <>
       <div className="page-header">
         <div className="page-header-nav">
           {activeFolder && (
-            <button className="icon-btn" onClick={closeFolder} title="Back to all folders"
-              aria-label="Back to all folders">
+            <button className="icon-btn" onClick={() => openFolder(parentOfActive?.id)}
+              title={parentOfActive ? `Back to ${parentOfActive.name}` : 'Back to all folders'}
+              aria-label={parentOfActive ? `Back to ${parentOfActive.name}` : 'Back to all folders'}>
               <ArrowLeft size={14} />
             </button>
           )}
@@ -373,15 +637,28 @@ export function Projects() {
             {activeFolder ? (
               <>
                 <span className="page-header-title">{activeFolder.name}</span>
-                <span className="page-header-sub">
-                  {listed.length} project{listed.length !== 1 ? 's' : ''}
+                <span className="page-header-sub folder-breadcrumb">
+                  {/* Where this folder sits — every step is a way back up. */}
+                  <nav aria-label="Folder path">
+                    <button type="button" onClick={closeFolder}>Projects</button>
+                    {trail.slice(0, -1).map(f => (
+                      <Fragment key={f.id}>
+                        <ChevronRight size={10} aria-hidden />
+                        <button type="button" onClick={() => openFolder(f.id)}>{f.name}</button>
+                      </Fragment>
+                    ))}
+                  </nav>
+                  <span>
+                    · {visibleFolders.length > 0 && `${plural(visibleFolders.length, 'folder')} · `}
+                    {plural(directProjects, 'project')}
+                  </span>
                 </span>
               </>
             ) : (
               <>
                 <span className="page-header-title">Projects</span>
                 <span className="page-header-sub">
-                  {projects.length} project{projects.length !== 1 ? 's' : ''} in {folders.length} folder{folders.length !== 1 ? 's' : ''}
+                  {plural(projects.length, 'project')} in {plural(folders.length, 'folder')}
                 </span>
               </>
             )}
@@ -389,7 +666,7 @@ export function Projects() {
         </div>
         <div className="page-header-actions">
           <RefreshButton onRefresh={fetchAll} />
-          {canManage && !activeFolder && (
+          {canManage && activeFolder?.id !== UNFILED && (
             <button className="btn btn-secondary" onClick={newFolder}>
               <FolderPlus size={15} /> New Folder
             </button>
@@ -416,195 +693,15 @@ export function Projects() {
           ))}
         </div>
 
-        {searching && !activeFolder && (
+        {searching && activeFolder?.id !== UNFILED && (
           <div className="folder-search-note">
-            Showing matches across every folder.
+            {realFolderId
+              ? `Showing matches in ${activeFolder.name} and its subfolders.`
+              : 'Showing matches across every folder.'}
           </div>
         )}
 
-        {loading ? (
-          <div className="loading-container"><div className="loading-spinner" /><span>Loading…</span></div>
-
-        /* ── Folder grid ─────────────────────────────────────── */
-        ) : !showingList ? (
-          folders.length === 0 && unfiledCount === 0 ? (
-            <div className="card">
-              <div className="empty-state">
-                <div className="empty-state-icon"><FolderKanban /></div>
-                <div className="empty-state-title">No projects yet</div>
-                <div className="empty-state-desc">Create your first project to get started tracking your work</div>
-                {canManage && (
-                  <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="folder-grid">
-              {folders.map((f, i) => {
-                const inside = projects.filter(p => p.folder_id === f.id)
-                const open = inside.filter(p => p.status !== 'Completed' && p.status !== 'Cancelled').length
-                const cls = ['folder-card',
-                  dragId === f.id && 'folder-card-dragging',
-                  dragOverId === f.id && dragId !== f.id && 'folder-card-drop'].filter(Boolean).join(' ')
-                return (
-                  <div key={f.id} className={cls} onClick={() => openFolder(f.id)}
-                    draggable={canManage}
-                    onDragStart={e => {
-                      setDragId(f.id)
-                      e.dataTransfer.effectAllowed = 'move'
-                      e.dataTransfer.setData('text/plain', f.id)
-                    }}
-                    onDragOver={e => {
-                      if (!dragId) return
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      if (dragOverId !== f.id) setDragOverId(f.id)
-                    }}
-                    onDrop={e => {
-                      e.preventDefault()
-                      if (dragId) moveFolder(dragId, i)
-                      setDragId(null); setDragOverId(null)
-                    }}
-                    onDragEnd={() => { setDragId(null); setDragOverId(null) }}>
-                    <div className="folder-card-top">
-                      <Folder className="folder-card-icon" size={22} />
-                      {canManage && (
-                        <div className="folder-card-actions">
-                          <button className="icon-btn" title="Move left"
-                            disabled={i === 0}
-                            onClick={e => nudgeFolder(e, f, -1)}><ChevronLeft size={12} /></button>
-                          <button className="icon-btn" title="Move right"
-                            disabled={i === folders.length - 1}
-                            onClick={e => nudgeFolder(e, f, 1)}><ChevronRight size={12} /></button>
-                          <button className="icon-btn" title="Rename folder"
-                            onClick={e => renameFolder(e, f)}><Pencil size={12} /></button>
-                          <button className="icon-btn" title="Delete folder"
-                            onClick={e => deleteFolder(e, f)}
-                            style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}>
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="folder-card-name">{f.name}</div>
-                    <div className="folder-card-meta">
-                      {inside.length === 0
-                        ? 'Empty'
-                        : `${inside.length} project${inside.length !== 1 ? 's' : ''}${open ? ` · ${open} open` : ''}`}
-                    </div>
-                    {f.is_confidential && (
-                      <div style={{ marginTop: 'var(--space-2)' }}><ConfidentialTag /></div>
-                    )}
-                    <div className="folder-card-strip">
-                      {inside.slice(0, 12).map(p => (
-                        <span key={p.id} className="folder-card-dot"
-                          style={{ background: p.color }} title={p.name} />
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {/* Only worth showing when something actually landed there. */}
-              {unfiledCount > 0 && (
-                <div className="folder-card folder-card-unfiled" onClick={() => openFolder(UNFILED)}>
-                  <div className="folder-card-top">
-                    <FolderOpen className="folder-card-icon" size={22} />
-                  </div>
-                  <div className="folder-card-name">Unfiled</div>
-                  <div className="folder-card-meta">
-                    {unfiledCount} project{unfiledCount !== 1 ? 's' : ''} with no folder
-                  </div>
-                  <div className="folder-card-strip">
-                    {projects.filter(p => !p.folder_id).slice(0, 12).map(p => (
-                      <span key={p.id} className="folder-card-dot"
-                        style={{ background: p.color }} title={p.name} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-
-        /* ── Project list ────────────────────────────────────── */
-        ) : listed.length === 0 ? (
-          <div className="card">
-            <div className="empty-state">
-              <div className="empty-state-icon"><FolderKanban /></div>
-              <div className="empty-state-title">
-                {searching ? 'No results found' : 'This folder is empty'}
-              </div>
-              <div className="empty-state-desc">
-                {searching
-                  ? 'Try a different search or status filter'
-                  : 'Create a project here, or move one in from its Edit screen'}
-              </div>
-              {!searching && canManage && (
-                <button className="btn btn-primary" onClick={openNew}><Plus size={15} /> New Project</button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="card">
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Project</th>
-                    <th>Client</th>
-                    {/* Which folder a hit came from only matters when
-                        you are looking across all of them. */}
-                    {searching && !activeFolder && <th>Folder</th>}
-                    <th>Type</th>
-                    <th>Stage</th>
-                    <th>Status</th>
-                    <th>Deadline</th>
-                    {canManage && <th></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {listed.map(p => (
-                    <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p.id}`)}>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                          <div style={{ width: 10, height: 10, background: p.color, flexShrink: 0 }} />
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                              {p.name}
-                              {restrictedBy(p) && <ConfidentialIcon reason={restrictedBy(p)} />}
-                            </div>
-                            {p.location && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{p.location}</div>}
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ fontSize: 'var(--text-sm)' }}>{p.client}</td>
-                      {searching && !activeFolder && (
-                        <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                          {folderName(p.folder_id) || 'Unfiled'}
-                        </td>
-                      )}
-                      <td><span className="tag">{p.project_type}</span></td>
-                      <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{p.current_stage}</td>
-                      <td><span className={`badge ${getStatusColor(p.status)}`}>{p.status}</span></td>
-                      <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                        {p.end_date ? format(new Date(p.end_date), 'd MMM yyyy') : '—'}
-                      </td>
-                      {canManage && (
-                        <td>
-                          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                            <button className="icon-btn" onClick={e => openEdit(e, p)} title="Edit"><Pencil size={13} /></button>
-                            <button className="icon-btn" onClick={e => handleDelete(e, p.id)} title="Delete"
-                              style={{ color: 'var(--danger)', borderColor: 'rgba(224,82,82,0.2)' }}><Trash2 size={13} /></button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {body}
       </div>
 
       <Modal isOpen={showModal} onClose={closeModal} title={editing ? 'Edit Project' : 'New Project'} size="lg" footer={modalFooter}>
@@ -626,7 +723,7 @@ export function Projects() {
             <select className="form-select" value={form.folder_id}
               onChange={e => setForm(f => ({ ...f, folder_id: e.target.value }))}>
               <option value="">Unfiled</option>
-              {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              {folderOptions.map(f => <option key={f.id} value={f.id}>{indentedName(f)}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -729,7 +826,7 @@ export function Projects() {
       <Modal
         isOpen={!!folderModal}
         onClose={() => setFolderModal(null)}
-        title={folderModal?.id ? 'Rename Folder' : 'New Folder'}
+        title={folderModal?.id ? 'Edit Folder' : 'New Folder'}
         footer={folderFooter}
       >
         <div className="form-group">
@@ -745,10 +842,22 @@ export function Projects() {
           )}
         </div>
 
+        <div className="form-group">
+          <label className="form-label">Location</label>
+          {/* Where the folder lives, like a path on the NAS. Its own
+              subfolders are left out — a folder cannot go inside itself. */}
+          <select className="form-select" value={folderModal?.parent_id || ''}
+            onChange={e => setFolderModal(m => ({ ...m, parent_id: e.target.value }))}>
+            <option value="">Top level</option>
+            {parentOptions.map(f => <option key={f.id} value={f.id}>{indentedName(f)}</option>)}
+          </select>
+        </div>
+
         {canRestrict && (
           <div className="form-group">
             <ConfidentialToggle
               noun="folder"
+              inherited={folderInheritsRestriction ? 'folder' : null}
               checked={folderModal?.is_confidential}
               disabled={saving}
               onChange={v => setFolderModal(m => ({ ...m, is_confidential: v }))}

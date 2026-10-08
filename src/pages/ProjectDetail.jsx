@@ -25,6 +25,7 @@ import {
 import { SitePhotos } from '../components/SitePhotos'
 import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
+import { folderRestricted } from '../lib/folders'
 
 const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_ids: [], due_date: '', start_date: '', stage: '', is_confidential: false }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
@@ -39,6 +40,9 @@ export function ProjectDetail() {
   const canRestrict = hasPermission('manage_confidential')
 
   const [project, setProject] = useState(null)
+  // The whole (visible) folder tree: a restriction can come from any
+  // folder above the one the project is filed in, not just that one.
+  const [folders, setFolders] = useState([])
   const [tasks, setTasks] = useState([])
   const [milestones, setMilestones] = useState([])
   const [documents, setDocuments] = useState([])
@@ -81,7 +85,7 @@ export function ProjectDetail() {
 
   async function fetchAll() {
     setLoading(true)
-    const [p, t, m, d, c, e, ph] = await Promise.all([
+    const [p, t, m, d, c, e, ph, fo] = await Promise.all([
       // The folder comes along because it can restrict the project on
       // its own, and the header and edit modal both have to say so.
       supabase.from('projects')
@@ -96,6 +100,7 @@ export function ProjectDetail() {
       supabase.from('employees').select('*').order('name'),
       // head:true — the tab label needs the count, nothing else does.
       supabase.from('site_photos').select('id', { count: 'exact', head: true }).eq('project_id', id),
+      supabase.from('project_folders').select('id,name,parent_id,is_confidential'),
     ])
     if (!p.data) { navigate('/projects'); return }
     setProject(p.data)
@@ -106,6 +111,7 @@ export function ProjectDetail() {
     setComments(c.data || [])
     setEmployees(e.data || [])
     setPhotoCount(ph.count || 0)
+    setFolders(fo.data || [])
     setLoading(false)
   }
 
@@ -317,9 +323,11 @@ export function ProjectDetail() {
   const currentStageIdx = stages.indexOf(project.current_stage)
 
   // Why this project is Principal-Architects-only: its own flag, or the
-  // folder it is filed in. null when it is open to the practice.
+  // folder it is filed in (or one above that). null when it is open to
+  // the practice.
+  const folderRestricts = folderRestricted(folders, project.folder_id)
   const projectRestrictedBy =
-    project.is_confidential ? 'own' : project.folder?.is_confidential ? 'folder' : null
+    project.is_confidential ? 'own' : folderRestricts ? 'folder' : null
 
   // How many tasks carry each stage label, so the editor can warn
   // before a delete strips them.
@@ -366,7 +374,8 @@ export function ProjectDetail() {
       <div className="page-header">
         <div className="page-header-left">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <button className="icon-btn" onClick={() => navigate('/projects')} style={{ marginRight: 'var(--space-1)' }}><ArrowLeft size={15} /></button>
+            <button className="icon-btn" title="Back to its folder"
+              onClick={() => navigate(project.folder_id ? `/projects?folder=${project.folder_id}` : '/projects')} style={{ marginRight: 'var(--space-1)' }}><ArrowLeft size={15} /></button>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <div style={{ width: 10, height: 10, background: project.color }} />
@@ -862,7 +871,7 @@ export function ProjectDetail() {
               <div className="form-group">
                 <ConfidentialToggle
                   noun="project"
-                  inherited={project.folder?.is_confidential ? 'folder' : null}
+                  inherited={folderRestricts ? 'folder' : null}
                   checked={projectForm.is_confidential}
                   disabled={saving}
                   onChange={v => setProjectForm(f => ({ ...f, is_confidential: v }))}
