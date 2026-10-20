@@ -26,6 +26,7 @@ import { AssigneePicker } from '../components/AssigneePicker'
 import {
   ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
 } from '../lib/assignees'
+import { titlesById } from '../lib/subtasks'
 
 /* ────────────────────────────────────────────────────────────────
    TEAM SCHEDULE
@@ -144,16 +145,23 @@ export function GanttTeam() {
   useEffect(() => { fetchAll() }, [])
 
   /* ── filtering & grouping ── */
+  // A sub-task is somebody's own line here, labelled with the job it is
+  // part of — "Presentation - 2 › Renders" — so it still reads on its
+  // own under that person's name.
+  const titles = useMemo(() => titlesById(tasks), [tasks])
+
   const visibleTasks = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return tasks.filter(t => {
       if (filterProject !== 'all' && t.project_id !== filterProject) return false
       if (filterStatus === 'open' && t.status === 'Done') return false
       if (filterStatus !== 'open' && filterStatus !== 'all' && t.status !== filterStatus) return false
-      if (needle && !t.title.toLowerCase().includes(needle)) return false
+      // Searching for the job finds its parts too.
+      const parent = t.parent_task_id ? titles.get(t.parent_task_id) || '' : ''
+      if (needle && !t.title.toLowerCase().includes(needle) && !parent.toLowerCase().includes(needle)) return false
       return true
     })
-  }, [tasks, filterProject, filterStatus, search])
+  }, [tasks, titles, filterProject, filterStatus, search])
 
   const groups = useMemo(() => {
     /* A shared task is listed under everybody on it, deliberately. The
@@ -197,10 +205,11 @@ export function GanttTeam() {
       // Keyed by person as well as task: one shared line is two rows.
       group.tasks.forEach(task => list.push({
         type: 'task', id: `${group.key}:${task.id}`, task, group,
+        parentTitle: task.parent_task_id ? titles.get(task.parent_task_id) || null : null,
       }))
     })
     return list
-  }, [groups, collapsed])
+  }, [groups, collapsed, titles])
 
   /* ── the visible window ── */
   const range = useMemo(() => ({
@@ -583,6 +592,7 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
                       {geo && (
                         <TeamBar
                           task={task}
+                          parentTitle={row.parentTitle}
                           geo={geo}
                           height={rowHeight(row)}
                           dragging={draggingId === task.id}
@@ -759,6 +769,9 @@ function TeamLabelRow({ row, cols, height, collapsed, onToggle, onOpen, canEdit 
       <div className="gantt-cell gantt-cell-task" style={{ width: width('task') }}>
         <span className="gantt-status-dot" style={{ background: STATUS_COLORS[task.status] || '#9CA3AF' }}
           title={task.status} />
+        {row.parentTitle && (
+          <span className="gantt-team-parent" title={`Sub-task of ${row.parentTitle}`}>{row.parentTitle} ›</span>
+        )}
         <span className={`gantt-team-title${task.status === 'Done' ? ' done' : ''}`}>{task.title}</span>
         {task.is_confidential && <ConfidentialIcon size={11} />}
         {pct > 0 && pct < 100 && <span className="gantt-team-pct">{pct}%</span>}
@@ -786,7 +799,7 @@ function TeamLabelRow({ row, cols, height, collapsed, onToggle, onOpen, canEdit 
   )
 }
 
-function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
+function TeamBar({ task, parentTitle = null, geo, height, dragging, editable, onDrag, onOpen }) {
   const [hover, setHover] = useState(false)
   const color = task.project?.color || '#4B5563'
   const pct = clamp(Number(task.progress) || 0, 0, 100)
@@ -814,6 +827,7 @@ function TeamBar({ task, geo, height, dragging, editable, onDrag, onOpen }) {
       }}
       title={[
         task.title,
+        parentTitle ? `Sub-task of ${parentTitle}` : null,
         task.project ? `Project: ${task.project.name}` : null,
         assigneesOf(task).length
           ? `Assigned to ${assigneesOf(task).map(p => p.name).join(', ')}`

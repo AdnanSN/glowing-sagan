@@ -3,10 +3,13 @@ import { supabase } from '../lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, isToday } from 'date-fns'
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
+import { subtaskLabel, titlesById } from '../lib/subtasks'
 
 export function Calendar() {
   const [milestones, setMilestones] = useState([])
   const [tasks, setTasks] = useState([])
+  // id → title, so a sub-task reads "Presentation - 2 › Renders".
+  const [parentTitles, setParentTitles] = useState(new Map())
   const [projects, setProjects] = useState([])
   const [current, setCurrent] = useState(new Date())
   const [loading, setLoading] = useState(true)
@@ -17,11 +20,20 @@ export function Calendar() {
     setLoading(true)
     const [m, t, p] = await Promise.all([
       supabase.from('milestones').select('*, project:projects(id,name,color)').order('due_date'),
-      supabase.from('tasks').select('id,title,due_date,project:projects(id,name,color)').not('due_date', 'is', null),
+      supabase.from('tasks').select('id,title,due_date,parent_task_id,project:projects(id,name,color)').not('due_date', 'is', null),
       supabase.from('projects').select('id,name,color,end_date').order('name'),
     ])
+    const dated = t.data || []
+    // A sub-task's main task may have no due date of its own, so it is
+    // not in the list above — fetch just the titles to label by.
+    const known = new Set(dated.map(row => row.id))
+    const missing = [...new Set(dated.map(row => row.parent_task_id).filter(id => id && !known.has(id)))]
+    const parents = missing.length
+      ? (await supabase.from('tasks').select('id,title').in('id', missing)).data || []
+      : []
     setMilestones(m.data || [])
-    setTasks(t.data || [])
+    setTasks(dated)
+    setParentTitles(titlesById([...dated, ...parents]))
     setProjects(p.data || [])
     setLoading(false)
   }
@@ -40,7 +52,7 @@ export function Calendar() {
       events.push({ label: `🏁 ${m.title}`, color: m.project?.color || '#1A1A1A', type: 'milestone' })
     )
     tasks.filter(t => t.due_date === dayStr).forEach(t =>
-      events.push({ label: t.title, color: t.project?.color || '#0041C2', type: 'task' })
+      events.push({ label: subtaskLabel(t, parentTitles), color: t.project?.color || '#0041C2', type: 'task' })
     )
     return events
   }

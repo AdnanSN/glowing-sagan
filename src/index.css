@@ -1490,6 +1490,154 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.6;
 }
 
+a.kanban-task-project { text-decoration: none; }
+a.kanban-task-project:hover { color: var(--text-primary); border-color: var(--text-primary); }
+
+/* The board's own Add button rides at the end of the filter bar, at
+   the filters' height, so the bar keeps one baseline. */
+.task-board-add { margin-left: auto; height: 36px; }
+
+/* Sub-tasks folded inside a board card: a "1/3" line that opens to
+   the parts, each with its own status, date and face. */
+.subtask-strip {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-light);
+}
+.subtask-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.subtask-toggle:hover { color: var(--text-primary); }
+.subtask-chevron { flex-shrink: 0; transition: transform 0.15s; }
+.subtask-chevron.open { transform: rotate(90deg); }
+.subtask-count { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.subtask-progress {
+  flex: 1;
+  height: 3px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+.subtask-progress > span { position: absolute; inset: 0 auto 0 0; background: var(--success); }
+.subtask-list { display: flex; flex-direction: column; margin-top: var(--space-2); }
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 3px var(--space-2);
+  border: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  color: var(--text-primary);
+}
+button.subtask-item { cursor: pointer; }
+button.subtask-item:hover { background: rgba(var(--ink-rgb), 0.05); }
+/* The part a filter matched, when the card opened to show it. */
+.subtask-item.is-match { border-left-color: var(--accent-primary); background: var(--accent-light); }
+.subtask-dot { width: 7px; height: 7px; flex-shrink: 0; }
+.subtask-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.subtask-title.done { text-decoration: line-through; color: var(--text-muted); }
+.subtask-due { font-size: 10px; color: var(--text-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.subtask-due.late { color: var(--danger); font-weight: var(--fw-bold); }
+.subtask-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 6px var(--space-2);
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.subtask-add:hover { color: var(--accent-primary); }
+
+/* ── the task dialog ── */
+.task-parent-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--accent-primary);
+  background: var(--bg-tertiary);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.task-parent-banner strong { font-weight: var(--fw-bold); color: var(--text-primary); }
+.task-parent-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: var(--fw-bold);
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.subtask-editor { padding-top: var(--space-4); border-top: 1px solid var(--border-light); }
+.subtask-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.subtask-row {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr) 150px 140px auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+/* Heights rather than padding, for the reason .form-select-sm gives. */
+.subtask-row .form-input,
+.subtask-row .form-select {
+  height: 34px;
+  padding-block: 0;
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+}
+.subtask-row-people { display: flex; align-items: center; height: 34px; }
+.subtask-row-actions { display: flex; gap: var(--space-1); }
+.subtask-row-actions .icon-btn { width: 30px; height: 30px; }
+.subtask-row-remove:hover { background: var(--danger); border-color: var(--danger); }
+.subtask-add-row { display: flex; align-items: center; gap: var(--space-2); }
+.subtask-add-row .form-input { flex: 1; }
+
+@media (max-width: 768px) {
+  .task-board-add { margin-left: 0; }
+  /* Title on its own line, then two pairs underneath. */
+  .subtask-row {
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .subtask-row-title { grid-column: 1 / -1; order: -1; }
+  .subtask-row-actions { justify-content: flex-end; }
+}
+
 /* ===========================
    EMPTY STATE
    =========================== */
@@ -3992,6 +4140,26 @@ h1, h2, h3, h4, h5, h6 {
 .gantt-row:hover .gantt-row-delete { display: inline-flex; }
 .gantt-row-delete:hover { color: var(--danger); }
 
+/* "+" on a main line: a sub-task straight under it. */
+.gantt-row-addsub {
+  display: none;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.gantt-row:hover .gantt-row-addsub { display: inline-flex; }
+.gantt-row-addsub:hover { color: var(--accent-primary); }
+
+/* A sub-task line: indented under its main task, numbered 1.2.1. */
+.gantt-row-sub .gantt-cell-title { padding-left: var(--space-4); }
+.gantt-row-sub .gantt-cell-num { font-size: 10px; }
+.gantt-sub-arrow { flex-shrink: 0; color: var(--text-muted); }
+.gantt-bar-sub { opacity: 0.92; }
+
 /* The PROGRESS cell — a number you type over, tinted by how far along
    the line is, so a column of them reads as a bar chart. */
 .gantt-progress-cell {
@@ -4285,6 +4453,17 @@ h1, h2, h3, h4, h5, h6 {
   text-overflow: ellipsis;
 }
 .gantt-team-title.done { text-decoration: line-through; color: var(--text-muted); }
+/* "Presentation - 2 ›" ahead of a sub-task's own title. Gives way
+   first when the column is tight — the person's own part matters more. */
+.gantt-team-parent {
+  flex: 0 1 auto;
+  max-width: 45%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+}
 .gantt-team-pct { font-size: 10px; color: var(--text-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .gantt-project-swatch { width: 8px; height: 8px; flex-shrink: 0; }
 .gantt-project-name {

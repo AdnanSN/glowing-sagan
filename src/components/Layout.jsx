@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard, FolderKanban, CheckSquare, Users,
+  LayoutDashboard, FolderKanban, Users,
   CalendarDays, FileText, Menu, GanttChart, CalendarRange,
   LogOut, Shield, ShieldCheck, Camera, Sun, Moon
 } from 'lucide-react'
@@ -13,8 +13,10 @@ import { ProfilePhotoModal } from './ProfilePhotoModal'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  // Tasks live inside their projects (Projects › folder › project), so
+  // they have no menu entry of their own. The all-projects board at
+  // /tasks is still there, opened from the dashboard's task cards.
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
-  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/gantt/project', icon: GanttChart, label: 'Project Timeline' },
   { to: '/gantt/team', icon: CalendarRange, label: 'Team Schedule' },
   { to: '/team', icon: Users, label: 'Team', requires: 'manage_team' },
