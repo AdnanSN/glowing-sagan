@@ -8,7 +8,8 @@
 -- migration_v8_confidential.sql, migration_v9_gantt.sql,
 -- migration_v10_site_photos.sql, migration_v11_task_notes.sql,
 -- migration_v12_nas_links.sql, migration_v13_remove_nas_links.sql,
--- then migration_v14_teams.sql.
+-- migration_v14_teams.sql, migration_v15_task_assignees.sql,
+-- migration_v16_subfolders.sql, then migration_v17_subtasks.sql.
 --
 -- Access model (see migration_v3_self_signup.sql for the full notes):
 --   Employees sign themselves up. Every new account lands as
@@ -157,6 +158,10 @@ create table if not exists tasks (
   -- Principal Architects only: one task inside an otherwise ordinary
   -- project.
   is_confidential boolean not null default false,
+  -- Set on a sub-task: the main task it is part of. One level only,
+  -- and a sub-task always shares its main task's project and stage —
+  -- see the triggers below and migration_v17_subtasks.sql.
+  parent_task_id uuid references tasks(id) on delete cascade,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   constraint tasks_progress_range check (progress between 0 and 100)
@@ -164,6 +169,8 @@ create table if not exists tasks (
 
 create index if not exists tasks_project_stage_position_idx
   on tasks (project_id, stage, position);
+create index if not exists tasks_parent_position_idx
+  on tasks (parent_task_id, position);
 
 -- TASK ASSIGNEES (who is on a line item — more than one person, which
 -- assignee_id alone could never say. See migration_v15_task_assignees.sql.
@@ -402,10 +409,22 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- Is a sub-task's main task restricted? Asked by the tasks policies
+-- below, so definer — it must read `tasks` without re-entering that
+-- table's own RLS.
+create or replace function public.task_parent_restricted(p_parent uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select t.is_confidential from public.tasks t where t.id = p_parent), false);
+$$;
+
+revoke all on function public.task_parent_restricted(uuid) from public, anon;
+grant execute on function public.task_parent_restricted(uuid) to authenticated;
+
 -- Governs a task's notes. Not the same question as project_visible():
--- a task carries its own is_confidential, so this mirrors the "read
--- tasks" policy below clause for clause. Definer so it can read `tasks`
--- without re-entering that table's own RLS.
+-- a task carries its own is_confidential, and a sub-task also inherits
+-- its main task's, so this mirrors the "read tasks" policy below clause
+-- for clause. Definer so it can read `tasks` without re-entering that
+-- table's own RLS.
 create or replace function public.task_visible(p_task uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
@@ -413,7 +432,14 @@ returns boolean language sql stable security definer set search_path = public as
      where t.id = p_task
        and (
          public.is_admin()
-         or (not t.is_confidential and public.project_visible(t.project_id))
+         or (
+           not t.is_confidential
+           and not exists (
+             select 1 from public.tasks p
+              where p.id = t.parent_task_id and p.is_confidential
+           )
+           and public.project_visible(t.project_id)
+         )
        )
   );
 $$;
@@ -461,6 +487,67 @@ drop trigger if exists task_assignees_sync_lead on public.task_assignees;
 create trigger task_assignees_sync_lead
   after insert or update or delete on public.task_assignees
   for each row execute function public.sync_task_lead_assignee();
+
+-- Sub-tasks (migration_v17). One level only, and a sub-task lives in
+-- its main task's project and stage whatever was sent. Definer: the
+-- main task may be one the caller cannot see, and the rule still holds.
+create or replace function public.tasks_guard_parent()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_parent public.tasks;
+begin
+  if new.parent_task_id is null then
+    return new;
+  end if;
+  if new.parent_task_id = new.id then
+    raise exception 'A task cannot be a sub-task of itself';
+  end if;
+
+  select * into v_parent from public.tasks where id = new.parent_task_id;
+  if not found then
+    raise exception 'Main task not found';
+  end if;
+  if v_parent.parent_task_id is not null then
+    raise exception 'A sub-task cannot have sub-tasks of its own';
+  end if;
+  if exists (select 1 from public.tasks where parent_task_id = new.id) then
+    raise exception 'This task has sub-tasks of its own, so it cannot become a sub-task';
+  end if;
+
+  new.project_id := v_parent.project_id;
+  new.stage      := v_parent.stage;
+  return new;
+end$$;
+
+revoke all on function public.tasks_guard_parent() from public, anon;
+
+drop trigger if exists tasks_guard_parent on public.tasks;
+create trigger tasks_guard_parent
+  before insert or update on public.tasks
+  for each row execute function public.tasks_guard_parent();
+
+-- A main task that moves project or stage takes its sub-tasks along.
+create or replace function public.tasks_carry_subtasks()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.parent_task_id is null
+     and (new.project_id is distinct from old.project_id
+          or new.stage is distinct from old.stage) then
+    update public.tasks
+       set project_id = new.project_id, stage = new.stage
+     where parent_task_id = new.id
+       and (project_id is distinct from new.project_id
+            or stage is distinct from new.stage);
+  end if;
+  return null;
+end$$;
+
+revoke all on function public.tasks_carry_subtasks() from public, anon;
+
+drop trigger if exists tasks_carry_subtasks on public.tasks;
+create trigger tasks_carry_subtasks
+  after update of project_id, stage on public.tasks
+  for each row execute function public.tasks_carry_subtasks();
 
 -- Folder tree upkeep (migration_v16). Definer so both see restricted
 -- folders a manager cannot — a hidden subfolder must not be orphaned
@@ -817,25 +904,38 @@ create policy "manager write milestones" on milestones for all to authenticated
   using      (public.has_min_role('manager') and public.project_visible(project_id))
   with check (public.has_min_role('manager') and public.project_visible(project_id));
 
--- TASKS — member and above; restricted on their own or by their project
+-- TASKS — member and above; restricted on their own, by their project,
+-- or (a sub-task) by their main task
 create policy "read tasks" on tasks for select to authenticated
   using (
     public.is_approved() and (
       public.is_admin()
-      or (not is_confidential and public.project_visible(project_id))
+      or (
+        not is_confidential
+        and (parent_task_id is null or not public.task_parent_restricted(parent_task_id))
+        and public.project_visible(project_id)
+      )
     )
   );
 create policy "member write tasks" on tasks for all to authenticated
   using (
     public.has_min_role('member') and (
       public.is_admin()
-      or (not is_confidential and public.project_visible(project_id))
+      or (
+        not is_confidential
+        and (parent_task_id is null or not public.task_parent_restricted(parent_task_id))
+        and public.project_visible(project_id)
+      )
     )
   )
   with check (
     public.has_min_role('member') and (
       public.is_admin()
-      or (not is_confidential and public.project_visible(project_id))
+      or (
+        not is_confidential
+        and (parent_task_id is null or not public.task_parent_restricted(parent_task_id))
+        and public.project_visible(project_id)
+      )
     )
   );
 

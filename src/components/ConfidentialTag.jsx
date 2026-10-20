@@ -29,12 +29,13 @@ const DESC = {
 const INHERITED = {
   folder: 'is filed in a restricted folder',
   project: 'belongs to a restricted project',
+  task: 'is a sub-task of a restricted main task',
 }
 
 /**
  * The control that sets it. Only rendered for Principal Architects —
  * the database refuses the change for anyone else regardless.
- * `inherited` ('folder' | 'project') is for something already
+ * `inherited` ('folder' | 'project' | 'task') is for something already
  * restricted from above: there is nothing left to decide, so it says
  * so instead of offering a checkbox that would do nothing.
  */

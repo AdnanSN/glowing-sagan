@@ -8,7 +8,7 @@ import { TaskNotesPanel } from '../components/TaskNotesPanel'
 import { GanttLegend } from '../components/GanttLegend'
 import {
   GanttChart, Plus, Trash2, ZoomIn, ZoomOut, CalendarClock,
-  AlertCircle, X, Check, GripVertical,
+  AlertCircle, X, Check, GripVertical, CornerDownRight,
 } from 'lucide-react'
 import { addDays, differenceInDays, format, isToday, isWeekend } from 'date-fns'
 import { projectStages, STAGE_COLORS, TASK_STATUSES, PRIORITIES } from '../lib/constants'
@@ -22,6 +22,7 @@ import { AssigneePicker } from '../components/AssigneePicker'
 import {
   ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesFromIds, assigneesOf, setTaskAssignees,
 } from '../lib/assignees'
+import { nextSubtaskPosition, splitSubtasks } from '../lib/subtasks'
 
 /* ────────────────────────────────────────────────────────────────
    PROJECT TIMELINE
@@ -174,35 +175,49 @@ export function GanttProject() {
   /* ── rows ── */
   const stages = useMemo(() => projectStages(project), [project])
 
+  /* Sub-tasks hang under their main task rather than taking a number
+     in the stage of their own: 1.2 is the job, 1.2.1 and 1.2.2 are its
+     parts. The database keeps a sub-task in its main task's stage, so
+     they always land in the same group. */
+  const { mains, subsOf } = useMemo(() => splitSubtasks(tasks), [tasks])
+
   const groups = useMemo(() => {
-    const sorted = [...tasks].sort(byPosition)
+    const sorted = [...mains].sort(byPosition)
     const buckets = new Map(stages.map(s => [s, []]))
     const loose = []
     sorted.forEach(t => {
       const bucket = t.stage && buckets.has(t.stage) ? buckets.get(t.stage) : loose
       bucket.push(t)
     })
+    // Every line in the group, sub-tasks included — what the stage bar
+    // and its dates are rolled up from.
+    const withSubs = list => list.flatMap(t => [t, ...(subsOf.get(t.id) || [])])
     const out = stages.map((name, i) => ({
       key: name, name, label: name, index: i + 1,
       color: STAGE_COLORS[i % STAGE_COLORS.length],
       tasks: buckets.get(name),
+      lines: withSubs(buckets.get(name)),
     }))
     // Lines whose stage was renamed away, or that were never given one.
     if (loose.length) {
       out.push({
         key: '__loose__', name: null, label: 'Not in a stage',
-        index: stages.length + 1, color: '#9CA3AF', tasks: loose,
+        index: stages.length + 1, color: '#9CA3AF', tasks: loose, lines: withSubs(loose),
       })
     }
     return out
-  }, [tasks, stages])
+  }, [mains, subsOf, stages])
 
   const rows = useMemo(() => {
     const list = []
     groups.forEach(group => {
       list.push({ type: 'stage', id: `stage-${group.key}`, group })
       group.tasks.forEach((task, i) => {
-        list.push({ type: 'task', id: task.id, task, group, number: `${group.index}.${i + 1}` })
+        const number = `${group.index}.${i + 1}`
+        list.push({ type: 'task', id: task.id, task, group, number })
+        ;(subsOf.get(task.id) || []).forEach((sub, j) => {
+          list.push({ type: 'task', id: sub.id, task: sub, group, number: `${number}.${j + 1}`, sub: true })
+        })
       })
       if (canEditTasks && group.name) {
         list.push({ type: 'adder', id: `add-${group.key}`, group })
@@ -214,7 +229,7 @@ export function GanttProject() {
       if (canEditMilestones) list.push({ type: 'adder', id: 'add-milestone', milestone: true })
     }
     return list
-  }, [groups, milestones, canEditTasks, canEditMilestones])
+  }, [groups, subsOf, milestones, canEditTasks, canEditMilestones])
 
   /* ── the span the chart covers ──
      Committed dates only. A bar being dragged writes to _tempStart /
@@ -265,7 +280,14 @@ export function GanttProject() {
     const current = tasks.find(t => t.id === id)
     const full = linkStatusAndProgress(patch, current)
 
-    setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...full } : t)))
+    // A main task's sub-tasks follow it into a new stage — the database
+    // moves them, and this moves them on screen without a re-read.
+    const carriesStage = 'stage' in full
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) return { ...t, ...full }
+      if (carriesStage && t.parent_task_id === id) return { ...t, stage: full.stage }
+      return t
+    }))
     const { error: err } = await supabase.from('tasks')
       .update({ ...full, updated_at: new Date().toISOString() }).eq('id', id)
     if (err) { setError(err.message); fetchRows(projectId) }
@@ -286,7 +308,7 @@ export function GanttProject() {
 
   async function addTask(group) {
     const position = group.tasks.reduce((max, t) => Math.max(max, t.position || 0), 0) + 1
-    const roll = rollUp(group.tasks)
+    const roll = rollUp(group.lines)
     // Start where the stage left off, so a new line lands somewhere
     // sensible on the chart instead of having no bar at all.
     const start = roll.end ? addDays(roll.end, 1) : (safeDate(project?.start_date) || new Date())
@@ -307,10 +329,41 @@ export function GanttProject() {
     setFocusId(data.id)
   }
 
+  /* A sub-task line under a main task, dated inside it so its bar
+     lands under the bar it belongs to. Project and stage are the main
+     task's — the database insists — and are sent so the row passes its
+     checks on the way in. */
+  async function addSubtask(main) {
+    const start = safeDate(main.start_date) || safeDate(project?.start_date) || new Date()
+    const due = safeDate(main.due_date)
+    const { data, error: err } = await supabase.from('tasks').insert({
+      project_id: projectId,
+      parent_task_id: main.id,
+      stage: main.stage,
+      title: 'New sub-task',
+      position: nextSubtaskPosition(subsOf.get(main.id)),
+      status: 'To Do',
+      priority: 'Medium',
+      progress: 0,
+      start_date: toISO(start),
+      due_date: toISO(due && due >= start ? due : addDays(start, 4)),
+    }).select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`).single()
+
+    if (err) { setError(err.message); return }
+    setTasks(prev => [...prev, data])
+    setFocusId(data.id)
+  }
+
   async function deleteTask(task) {
-    if (!confirm(`Delete "${task.title}" from the timeline?`)) return
-    setTasks(prev => prev.filter(t => t.id !== task.id))
-    if (noteCell?.taskId === task.id) setNoteCell(null)
+    // Deleting a main task takes its sub-tasks with it; say so first.
+    const subs = subsOf.get(task.id) || []
+    const message = subs.length
+      ? `Delete "${task.title}" and its ${subs.length} sub-task${subs.length !== 1 ? 's' : ''} from the timeline?`
+      : `Delete "${task.title}" from the timeline?`
+    if (!confirm(message)) return
+    const gone = new Set([task.id, ...subs.map(s => s.id)])
+    setTasks(prev => prev.filter(t => !gone.has(t.id)))
+    if (noteCell && gone.has(noteCell.taskId)) setNoteCell(null)
     const { error: err } = await supabase.from('tasks').delete().eq('id', task.id)
     if (err) { setError(err.message); fetchRows(projectId) }
   }
@@ -368,11 +421,14 @@ export function GanttProject() {
       status: editRow.status,
       priority: editRow.priority,
       progress: clamp(Number(editRow.progress) || 0, 0, 100),
-      stage: editRow.stage || null,
+      // A sub-task's stage is its main task's, not a choice.
+      ...(editRow.parent_task_id ? {} : { stage: editRow.stage || null }),
     })
     setSaving(false)
     setEditRow(null)
   }
+
+  const editParent = editRow?.parent_task_id ? tasks.find(t => t.id === editRow.parent_task_id) : null
 
   /* ── notes on a square ──
      A click anywhere along a line's row — on the bar or on the empty
@@ -590,6 +646,7 @@ export function GanttProject() {
                   onPatchMilestone={patchMilestone}
                   onDeleteMilestone={deleteMilestone}
                   onAddTask={addTask}
+                  onAddSubtask={addSubtask}
                   onAddMilestone={addMilestone}
                   onOpen={openRow}
                 />
@@ -716,6 +773,13 @@ export function GanttProject() {
       >
         {editRow && (
           <>
+            {editParent && (
+              <div className="task-parent-banner">
+                <CornerDownRight size={13} />
+                <span>Sub-task of</span>
+                <strong>{editParent.title}</strong>
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Task Title *</label>
               <input className="form-input" value={editRow.title}
@@ -757,6 +821,8 @@ export function GanttProject() {
               <div className="form-group">
                 <label className="form-label">Stage</label>
                 <select className="form-select" value={editRow.stage || ''}
+                  disabled={!!editParent}
+                  title={editParent ? 'A sub-task is always in the same stage as its main task' : undefined}
                   onChange={e => setEditRow(r => ({ ...r, stage: e.target.value }))}>
                   <option value="">— Not in a stage —</option>
                   {stages.map(s => <option key={s} value={s}>{s}</option>)}
@@ -895,14 +961,14 @@ function EditableText({
 function LabelRow({
   row, cols, height, canEditTasks, canEditMilestones, autoFocus, onFocused,
   onPatchTask, onDeleteTask, onPatchMilestone, onDeleteMilestone,
-  onAddTask, onAddMilestone, onOpen,
+  onAddTask, onAddSubtask, onAddMilestone, onOpen,
 }) {
   const width = key => cols.find(c => c.key === key)?.w
   const has = key => cols.some(c => c.key === key)
 
   if (row.type === 'stage') {
     const { group } = row
-    const roll = rollUp(group.tasks)
+    const roll = rollUp(group.lines)
     return (
       <div className="gantt-row gantt-row-stage" style={{ height }}>
         <div className="gantt-cell gantt-cell-num" style={{ width: width('num') }}>{group.index}</div>
@@ -1005,10 +1071,12 @@ function LabelRow({
   const dur = durationDays(task.start_date, task.due_date)
 
   return (
-    <div className="gantt-row gantt-row-task" style={{ height }} onDoubleClick={() => onOpen(task)}>
+    <div className={`gantt-row gantt-row-task${row.sub ? ' gantt-row-sub' : ''}`} style={{ height }}
+      onDoubleClick={() => onOpen(task)}>
       <div className="gantt-cell gantt-cell-num" style={{ width: width('num') }}>{row.number}</div>
 
       <div className="gantt-cell gantt-cell-title" style={{ width: width('title') }}>
+        {row.sub && <CornerDownRight size={11} className="gantt-sub-arrow" />}
         <EditableText
           value={task.title}
           disabled={!canEditTasks}
@@ -1018,8 +1086,13 @@ function LabelRow({
           className={`gantt-inline-input gantt-title-input${task.status === 'Done' ? ' done' : ''}`}
         />
         {task.is_confidential && <ConfidentialIcon size={11} />}
+        {/* One level only: a sub-task gets no "+" of its own. */}
+        {canEditTasks && !row.sub && (
+          <button className="gantt-row-addsub" title="Add a sub-task under this line"
+            onClick={() => onAddSubtask(task)}><Plus size={12} /></button>
+        )}
         {canEditTasks && (
-          <button className="gantt-row-delete" title="Delete line"
+          <button className="gantt-row-delete" title={row.sub ? 'Delete sub-task' : 'Delete line'}
             onClick={() => onDeleteTask(task)}><Trash2 size={12} /></button>
         )}
       </div>
@@ -1096,7 +1169,7 @@ function ChartRow({
   onDrag, onOpen, onCellClick,
 }) {
   if (row.type === 'stage') {
-    const roll = rollUp(row.group.tasks)
+    const roll = rollUp(row.group.lines)
     const geo = roll.start ? barGeom(roll.start, roll.end) : null
     return (
       <div className="gantt-row gantt-row-stage" style={{ height }}>
@@ -1178,6 +1251,7 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
           geo={geo}
           color={color}
           height={height}
+          sub={row.sub}
           dragging={draggingId === task.id}
           editable={canEditTasks}
           onDrag={onDrag}
@@ -1195,18 +1269,21 @@ Overdue — ${slip.days} day${slip.days === 1 ? '' : 's'} past ${format(slip.due
   )
 }
 
-function TaskBar({ task, geo, color, height, dragging, editable, onDrag, onOpen }) {
+function TaskBar({ task, geo, color, height, sub = false, dragging, editable, onDrag, onOpen }) {
   const [hover, setHover] = useState(false)
   const pct = clamp(Number(task.progress) || 0, 0, 100)
   const done = pct >= 100 || task.status === 'Done'
   const overdue = isOverdue(task)
   const showLabel = geo.w > 64
+  // A sub-task's bar sits a little slimmer than its main task's, so the
+  // pair reads as a job and its part at a glance.
+  const inset = sub ? 11 : 8
 
   return (
     <div
-      className={`gantt-bar${dragging ? ' dragging' : ''}${hover ? ' hover' : ''}${done ? ' done' : ''}${overdue ? ' overdue' : ''}`}
+      className={`gantt-bar${sub ? ' gantt-bar-sub' : ''}${dragging ? ' dragging' : ''}${hover ? ' hover' : ''}${done ? ' done' : ''}${overdue ? ' overdue' : ''}`}
       style={{
-        left: geo.x, width: geo.w, height: height - 16, top: 8,
+        left: geo.x, width: geo.w, height: height - inset * 2, top: inset,
         background: rgba(done ? '#0F7B55' : color, 0.16),
         borderColor: overdue ? 'var(--danger)' : rgba(done ? '#0F7B55' : color, 0.6),
         cursor: editable ? (dragging ? 'grabbing' : 'grab') : 'default',

@@ -9,25 +9,20 @@ import {
   FolderOpen
 } from 'lucide-react'
 import { RefreshButton } from '../components/RefreshButton'
-import { AvatarStack } from '../components/Avatar'
-import { AssigneePicker } from '../components/AssigneePicker'
 import { format, isPast, isToday } from 'date-fns'
 import {
-  STAGE_COLORS, TASK_STATUSES, PRIORITIES, DOC_TYPES,
-  DEFAULT_PROJECT_TYPE, PROJECT_STATUSES, PROJECT_COLORS,
+  DOC_TYPES, DEFAULT_PROJECT_TYPE, PROJECT_STATUSES, PROJECT_COLORS,
   projectStages, projectTypeOptions, getStatusColor
 } from '../lib/constants'
 import { DocumentLocationModal } from '../components/DocumentLocationModal'
 import { StageEditor } from '../components/StageEditor'
-import {
-  ASSIGNEES_SELECT, LEAD_SELECT, assigneeIdsOf, assigneesOf, setTaskAssignees,
-} from '../lib/assignees'
+import { ASSIGNEES_SELECT, LEAD_SELECT } from '../lib/assignees'
 import { SitePhotos } from '../components/SitePhotos'
-import { ConfidentialTag, ConfidentialIcon, ConfidentialToggle } from '../components/ConfidentialTag'
+import { TaskBoard } from '../components/TaskBoard'
+import { ConfidentialTag, ConfidentialToggle } from '../components/ConfidentialTag'
 import { toStageRows, stageNames, stageRenames, stageError } from '../lib/stages'
 import { folderRestricted } from '../lib/folders'
 
-const EMPTY_TASK = { title: '', description: '', status: 'To Do', priority: 'Medium', assignee_ids: [], due_date: '', start_date: '', stage: '', is_confidential: false }
 const EMPTY_MILESTONE = { title: '', due_date: '', is_completed: false }
 const EMPTY_DOC = { name: '', url: '', doc_type: 'Drawing', uploaded_by: '', notes: '' }
 
@@ -36,6 +31,9 @@ export function ProjectDetail() {
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const canManage = hasPermission('manage_projects')
+  // Tasks sit a rung lower than the project itself, as they always did
+  // on the Tasks board: members work the board, leads edit the job.
+  const canEditTasks = hasPermission('manage_tasks')
   // Principal Architects only — see Projects.jsx for the same note.
   const canRestrict = hasPermission('manage_confidential')
 
@@ -55,10 +53,6 @@ export function ProjectDetail() {
   const [activeTab, setActiveTab] = useState('tasks')
 
   // Modals
-  const [taskModal, setTaskModal] = useState(false)
-  const [editingTask, setEditingTask] = useState(null)
-  const [taskForm, setTaskForm] = useState(EMPTY_TASK)
-
   const [milestoneModal, setMilestoneModal] = useState(false)
   const [editingMilestone, setEditingMilestone] = useState(null)
   const [msForm, setMsForm] = useState(EMPTY_MILESTONE)
@@ -91,9 +85,7 @@ export function ProjectDetail() {
       supabase.from('projects')
         .select('*, folder:project_folders(id,name,is_confidential)')
         .eq('id', id).single(),
-      supabase.from('tasks')
-        .select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`)
-        .eq('project_id', id).order('created_at'),
+      tasksQuery(),
       supabase.from('milestones').select('*').eq('project_id', id).order('due_date'),
       supabase.from('documents').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('comments').select('*').eq('project_id', id).order('created_at'),
@@ -113,6 +105,22 @@ export function ProjectDetail() {
     setPhotoCount(ph.count || 0)
     setFolders(fo.data || [])
     setLoading(false)
+  }
+
+  // Sub-tasks come along with everything else: the board folds them
+  // into their main task's card.
+  function tasksQuery() {
+    return supabase.from('tasks')
+      .select(`*, ${LEAD_SELECT}, ${ASSIGNEES_SELECT}`)
+      .eq('project_id', id).order('created_at', { ascending: false })
+  }
+
+  // After a save on the board: tasks only, and no spinner, so the board
+  // stays mounted and keeps its search and open cards.
+  async function refreshTasks() {
+    const { data, error } = await tasksQuery()
+    if (error) { console.error('ProjectDetail: tasks query failed —', error); return }
+    setTasks(data || [])
   }
 
   // === STAGE UPDATE ===
@@ -174,51 +182,6 @@ export function ProjectDetail() {
     await supabase.from('projects').update(payload).eq('id', id)
     setSaving(false)
     closeProjectModal()
-    fetchAll()
-  }
-
-  // === TASKS ===
-  function openNewTask() { setEditingTask(null); setTaskForm(EMPTY_TASK); setTaskModal(true) }
-  function openEditTask(t) { setEditingTask(t); setTaskForm({ ...t, assignee_ids: assigneeIdsOf(t), start_date: t.start_date || '', due_date: t.due_date || '', stage: t.stage || '', description: t.description || '' }); setTaskModal(true) }
-  function closeTaskModal() { setTaskModal(false); setEditingTask(null) }
-
-  async function saveTask() {
-    setSaving(true)
-    // Listed out rather than spread: editing loads the whole task row
-    // into the form, joined `assignee` object and all, and PostgREST
-    // rejects the write if anything that is not a column comes with it.
-    const payload = {
-      project_id: id,
-      title: taskForm.title,
-      description: taskForm.description || '',
-      status: taskForm.status,
-      priority: taskForm.priority,
-      start_date: taskForm.start_date || null,
-      due_date: taskForm.due_date || null,
-      stage: taskForm.stage || null,
-      is_confidential: !!taskForm.is_confidential,
-      updated_at: new Date().toISOString(),
-    }
-    // assignee_id is not in there on purpose: it is the lead, derived
-    // by the database from the list written straight after.
-    const { data, error } = editingTask
-      ? await supabase.from('tasks').update(payload).eq('id', editingTask.id).select('id').single()
-      : await supabase.from('tasks').insert(payload).select('id').single()
-    if (!error && data) await setTaskAssignees(data.id, taskForm.assignee_ids)
-    setSaving(false)
-    closeTaskModal()
-    fetchAll()
-  }
-
-  async function deleteTask(tid) {
-    if (!confirm('Delete this task?')) return
-    await supabase.from('tasks').delete().eq('id', tid)
-    fetchAll()
-  }
-
-  async function toggleTaskDone(task) {
-    const newStatus = task.status === 'Done' ? 'To Do' : 'Done'
-    await supabase.from('tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', task.id)
     fetchAll()
   }
 
@@ -336,14 +299,6 @@ export function ProjectDetail() {
     return acc
   }, {})
 
-  const taskModalFooter = (
-    <>
-      <button className="btn btn-secondary" onClick={closeTaskModal}>Cancel</button>
-      <button className="btn btn-primary" onClick={saveTask} disabled={!taskForm.title || saving}>
-        {saving ? 'Saving…' : editingTask ? 'Save' : 'Add Task'}
-      </button>
-    </>
-  )
   const msModalFooter = (
     <>
       <button className="btn btn-secondary" onClick={closeMsModal}>Cancel</button>
@@ -482,67 +437,19 @@ export function ProjectDetail() {
           ))}
         </div>
 
-        {/* ===== TASKS TAB ===== */}
+        {/* ===== TASKS TAB =====
+            The same board as everywhere else, held to this project. */}
         {activeTab === 'tasks' && (
-          <div>
-            <div className="section-header">
-              <span className="section-title">Tasks</span>
-              {canManage && <button className="btn btn-primary btn-sm" onClick={openNewTask}><Plus size={13} /> Add Task</button>}
-            </div>
-            {tasks.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon"><CheckSquare /></div>
-                <div className="empty-state-title">No tasks yet</div>
-                <div className="empty-state-desc">Add tasks to track your project's deliverables</div>
-                {canManage && <button className="btn btn-primary" onClick={openNewTask}><Plus size={15} /> Add Task</button>}
-              </div>
-            ) : (
-              TASK_STATUSES.map(status => {
-                const statusTasks = tasks.filter(t => t.status === status)
-                if (statusTasks.length === 0) return null
-                return (
-                  <div key={status} style={{ marginBottom: 'var(--space-5)' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 'var(--space-3)' }}>
-                      {status} · {statusTasks.length}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      {statusTasks.map(task => {
-                        const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date)) && task.status !== 'Done'
-                        return (
-                          <div key={task.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', transition: 'var(--transition)' }}>
-                            <div
-                              onClick={() => canManage && toggleTaskDone(task)}
-                              style={{ width: 20, height: 20, border: `2px solid ${task.status === 'Done' ? 'var(--success)' : 'var(--border-medium)'}`, background: task.status === 'Done' ? 'var(--success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canManage ? 'pointer' : 'default', flexShrink: 0, color: 'white', transition: 'var(--transition)' }}
-                            >
-                              {task.status === 'Done' && <Check size={11} />}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', fontWeight: 500, textDecoration: task.status === 'Done' ? 'line-through' : 'none', color: task.status === 'Done' ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                                {task.title}
-                                {task.is_confidential && <ConfidentialIcon />}
-                              </div>
-                              {task.description && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 2 }}>{task.description}</div>}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0 }}>
-                              <div style={{ width: 8, height: 8, background: task.priority === 'High' ? 'var(--danger)' : task.priority === 'Medium' ? 'var(--warning)' : 'var(--success)' }} title={task.priority} />
-                              {task.due_date && (
-                                <span style={{ fontSize: 'var(--text-xs)', color: isOverdue ? 'var(--danger)' : 'var(--text-muted)', fontWeight: isOverdue ? 600 : 400 }}>
-                                  {format(new Date(task.due_date), 'd MMM')}
-                                </span>
-                              )}
-                              <AvatarStack people={assigneesOf(task)} size="sm" max={3} />
-                              {canManage && <button className="icon-btn" onClick={() => openEditTask(task)}><Pencil size={12} /></button>}
-                              {canManage && <button className="icon-btn" onClick={() => deleteTask(task.id)} style={{ color: 'var(--danger)' }}><Trash2 size={12} /></button>}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
+          <TaskBoard
+            tasks={tasks}
+            employees={employees}
+            projects={[project]}
+            folders={folders}
+            scopeProject={project}
+            canManage={canEditTasks}
+            canRestrict={canRestrict}
+            onChanged={refreshTasks}
+          />
         )}
 
         {/* ===== MILESTONES TAB ===== */}
@@ -686,78 +593,6 @@ export function ProjectDetail() {
           </div>
         )}
       </div>
-
-      {/* Task Modal */}
-      <Modal isOpen={taskModal} onClose={closeTaskModal} title={editingTask ? 'Edit Task' : 'New Task'} footer={taskModalFooter}>
-        <div className="form-group">
-          <label className="form-label">Task Title *</label>
-          <input className="form-input" placeholder="e.g. Prepare structural drawings" value={taskForm.title}
-            onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Description</label>
-          <textarea className="form-textarea" value={taskForm.description}
-            onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))} style={{ minHeight: 60 }} />
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Status</label>
-            <select className="form-select" value={taskForm.status} onChange={e => setTaskForm(f => ({ ...f, status: e.target.value }))}>
-              {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Priority</label>
-            <select className="form-select" value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))}>
-              {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Assigned to</label>
-            <AssigneePicker
-              employees={employees}
-              value={taskForm.assignee_ids}
-              onChange={ids => setTaskForm(f => ({ ...f, assignee_ids: ids }))}
-            />
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Start Date</label>
-            <input className="form-input" type="date" value={taskForm.start_date} onChange={e => setTaskForm(f => ({ ...f, start_date: e.target.value }))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Due Date</label>
-            <input className="form-input" type="date" value={taskForm.due_date} onChange={e => setTaskForm(f => ({ ...f, due_date: e.target.value }))} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Stage</label>
-          <select className="form-select" value={taskForm.stage} onChange={e => setTaskForm(f => ({ ...f, stage: e.target.value }))}>
-            <option value="">— Any Stage —</option>
-            {stages.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-        {canRestrict && (
-          <div className="form-group">
-            <ConfidentialToggle
-              noun="task"
-              // Everything in a restricted project is restricted already;
-              // the per-task flag is only meaningful on an open one.
-              inherited={projectRestrictedBy ? 'project' : null}
-              checked={taskForm.is_confidential}
-              disabled={saving}
-              onChange={v => setTaskForm(f => ({ ...f, is_confidential: v }))}
-            />
-          </div>
-        )}
-        {editingTask && canManage && (
-          <button className="btn btn-danger btn-sm" style={{ marginTop: 'var(--space-2)' }}
-            onClick={() => { closeTaskModal(); deleteTask(editingTask.id) }}>Delete Task</button>
-        )}
-      </Modal>
 
       {/* Milestone Modal */}
       <Modal isOpen={milestoneModal} onClose={closeMsModal} title={editingMilestone ? 'Edit Milestone' : 'New Milestone'} footer={msModalFooter}>
