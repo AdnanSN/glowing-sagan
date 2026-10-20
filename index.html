@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NHN PM — Architect Project Management</title>
   <meta name="description" content="Professional project management for architecture studios — track projects, tasks, team and milestones." />
+    <!-- Applied before first paint so a dark theme never flashes white. See src/lib/theme.js. -->
+    <script>
+      try {
+        if (localStorage.getItem('nhn-theme') === 'dark') document.documentElement.dataset.theme = 'dark'
+      } catch (e) { /* storage blocked: stay light */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -15,7 +15,7 @@ import {
 } from '../lib/assignees'
 
 const STATUS_COLORS = {
-  'To Do': { bg: '#F3F4F6', color: '#6B7280' },
+  'To Do': { bg: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
   'In Progress': { bg: 'var(--info-light)', color: 'var(--info)' },
   'In Review': { bg: 'var(--warning-light)', color: 'var(--warning)' },
   'Done': { bg: 'var(--success-light)', color: 'var(--success)' },
@@ -178,7 +178,7 @@ export function Tasks() {
 
   const colStatusStyle = (status) => ({
     width: 10, height: 10, flexShrink: 0,
-    background: STATUS_COLORS[status]?.color || '#ccc'
+    background: STATUS_COLORS[status]?.color || 'var(--border-medium)'
   })
 
   return (

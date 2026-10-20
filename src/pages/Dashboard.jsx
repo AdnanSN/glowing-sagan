@@ -136,7 +136,7 @@ export function Dashboard() {
           <StatCard
             to={canManageTeam ? '/team' : undefined}
             icon={<Users />}
-            iconStyle={{ background: '#EFEDF6', color: '#6B5CA5' }}
+            iconStyle={{ background: 'color-mix(in srgb, #6B5CA5 12%, var(--bg-secondary))', color: '#6B5CA5' }}
             value={employees.length}
             label="Team Members"
             delta={`${assignedTasks} assigned tasks`}

@@ -3,11 +3,12 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FolderKanban, CheckSquare, Users,
   CalendarDays, FileText, Menu, GanttChart, CalendarRange,
-  LogOut, Shield, ShieldCheck, Camera
+  LogOut, Shield, ShieldCheck, Camera, Sun, Moon
 } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { roleMeta } from '../lib/constants'
+import { useTheme } from '../lib/theme'
 import { ProfilePhotoModal } from './ProfilePhotoModal'
 
 const navItems = [
@@ -28,6 +29,8 @@ export function Layout({ children }) {
   const [photoOpen, setPhotoOpen] = useState(false)
   const location = useLocation()
   const { user, userRole, userEmployee, signOut, hasPermission } = useAuth()
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -132,14 +135,24 @@ export function Layout({ children }) {
               </div>
             </div>
           </div>
-          <button
-            className="sidebar-logout-btn"
-            onClick={handleSignOut}
-            title="Sign out"
-            id="logout-btn"
-          >
-            <LogOut size={16} />
-          </button>
+          <div className="sidebar-user-actions">
+            <button
+              className="sidebar-theme-btn"
+              onClick={toggleTheme}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
+              className="sidebar-logout-btn"
+              onClick={handleSignOut}
+              title="Sign out"
+              id="logout-btn"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 

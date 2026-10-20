@@ -31,7 +31,7 @@ import { addNote, deleteNote, fetchTaskNotes, noteDay, updateNote } from '../lib
    ──────────────────────────────────────────────────────────────── */
 
 const STATUS_TONE = {
-  'To Do':       { bg: '#F3F4F6',              color: '#6B7280' },
+  'To Do':       { bg: 'var(--bg-tertiary)',   color: 'var(--text-secondary)' },
   'In Progress': { bg: 'var(--info-light)',    color: 'var(--info)' },
   'In Review':   { bg: 'var(--warning-light)', color: 'var(--warning)' },
   'Done':        { bg: 'var(--success-light)', color: 'var(--success)' },
